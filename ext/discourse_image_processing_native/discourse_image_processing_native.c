@@ -256,6 +256,73 @@ static VALUE rb_resize(VALUE self, VALUE input_val, VALUE output_val, VALUE scal
   return hash;
 }
 
+static VALUE rb_crop_north(VALUE self, VALUE input_val, VALUE output_val, VALUE width_val, VALUE height_val, VALUE format_val, VALUE quality_val, VALUE max_pixels_val) {
+  Check_Type(input_val, T_STRING);
+  Check_Type(output_val, T_STRING);
+  Check_Type(format_val, T_STRING);
+  int width = NUM2INT(width_val);
+  int height = NUM2INT(height_val);
+  int quality = NUM2INT(quality_val);
+  if (width <= 0 || height <= 0) rb_raise(rb_eArgError, "width and height must be positive");
+  const char *out_fmt = normalized_format(StringValueCStr(format_val));
+  if (!out_fmt || strcmp(out_fmt, "heic") == 0) rb_raise(eUnsupported, "unsupported output format");
+
+  double start = now_ms();
+  const char *input_fmt = NULL;
+  VipsImage *in = load_explicit(StringValueCStr(input_val), &input_fmt);
+  validate_pixels_or_raise(in, max_pixels_val);
+
+  VipsImage *rot = NULL;
+  if (vips_autorot(in, &rot, NULL) != 0) {
+    g_object_unref(in);
+    raise_vips();
+  }
+
+  double sx = (double)width / (double)rot->Xsize;
+  double sy = (double)height / (double)rot->Ysize;
+  double scale = sx > sy ? sx : sy;
+  scale *= 1.0000001;
+
+  VipsImage *resized = NULL;
+  if (vips_resize(rot, &resized, scale, NULL) != 0) {
+    g_object_unref(rot);
+    g_object_unref(in);
+    raise_vips();
+  }
+
+  int left = (resized->Xsize - width) / 2;
+  if (left < 0) left = 0;
+
+  VipsImage *crop = NULL;
+  if (vips_extract_area(resized, &crop, left, 0, width, height, NULL) != 0) {
+    g_object_unref(resized);
+    g_object_unref(rot);
+    g_object_unref(in);
+    raise_vips();
+  }
+
+  if (save_explicit(crop, StringValueCStr(output_val), out_fmt, quality) != 0) {
+    g_object_unref(crop);
+    g_object_unref(resized);
+    g_object_unref(rot);
+    g_object_unref(in);
+    raise_vips();
+  }
+
+  VALUE hash = rb_hash_new();
+  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(crop->Xsize));
+  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(crop->Ysize));
+  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(now_ms() - start));
+
+  g_object_unref(crop);
+  g_object_unref(resized);
+  g_object_unref(rot);
+  g_object_unref(in);
+  return hash;
+}
+
 void Init_discourse_image_processing_native(void) {
   mDIP = rb_define_module("DiscourseImageProcessing");
   eError = rb_const_get(mDIP, rb_intern("Error"));
@@ -266,4 +333,5 @@ void Init_discourse_image_processing_native(void) {
   rb_define_singleton_method(mNative, "probe", rb_probe, 1);
   rb_define_singleton_method(mNative, "thumbnail", rb_thumbnail, 7);
   rb_define_singleton_method(mNative, "resize", rb_resize, 6);
+  rb_define_singleton_method(mNative, "crop_north", rb_crop_north, 7);
 }

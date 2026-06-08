@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require "tmpdir"
 require "timeout"
 
 module DiscourseImageProcessing
@@ -20,9 +21,11 @@ module DiscourseImageProcessing
     module_function
 
     DEFAULT_TIMEOUT = 20
+    IMAGEMAGICK_POLICY_PATH = File.expand_path("imagemagick_policy", __dir__)
     SAFE_ENV = {
       "PATH" => "/usr/local/bin:/usr/bin:/bin",
-      "MAGICK_CONFIGURE_PATH" => "/dev/null",
+      "MAGICK_CONFIGURE_PATH" => IMAGEMAGICK_POLICY_PATH,
+      "MAGICK_TEMPORARY_PATH" => Dir.tmpdir,
       "VIPS_BLOCK_UNTRUSTED" => "1"
     }.freeze
 

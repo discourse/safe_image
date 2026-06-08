@@ -1,0 +1,22 @@
+<policymap>
+  <!-- Defensive ImageMagick policy for discourse_image_processing compatibility
+       backend. We only need raster image coders used explicitly by this gem. -->
+  <policy domain="delegate" rights="none" pattern="*" />
+  <policy domain="filter" rights="none" pattern="*" />
+  <policy domain="path" rights="none" pattern="@*" />
+
+  <policy domain="coder" rights="none" pattern="*" />
+  <policy domain="coder" rights="read|write" pattern="{JPEG,JPG,PNG,GIF,WEBP,HEIC,HEIF,AVIF,ICO,ICC,ICM,XC}" />
+
+  <!-- Ghostscript-backed / document / vector-ish formats: deny explicitly even
+       if a broader system policy is present. -->
+  <policy domain="coder" rights="none" pattern="{PS,PS2,PS3,EPS,EPSF,PDF,XPS,PCL,MSL,MVG,HTTPS,HTTP,URL,TEXT,LABEL}" />
+  <policy domain="module" rights="none" pattern="{PS,PS2,PS3,EPS,EPSF,PDF,XPS,PCL,MSL,MVG,HTTPS,HTTP,URL}" />
+
+  <policy domain="resource" name="memory" value="512MiB" />
+  <policy domain="resource" name="map" value="512MiB" />
+  <policy domain="resource" name="disk" value="1GiB" />
+  <policy domain="resource" name="file" value="128" />
+  <policy domain="resource" name="thread" value="2" />
+  <policy domain="resource" name="time" value="30" />
+</policymap>

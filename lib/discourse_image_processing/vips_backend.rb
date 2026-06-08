@@ -6,6 +6,10 @@ module DiscourseImageProcessing
 
     DIMENSIONS_RE = /\A(?:(?<percent>\d+(?:\.\d+)?)%|(?<w>\d*)x(?<h>\d*)(?<only_down>>)?|(?<pixels>\d+)@)\z/
 
+    def crop_north(input:, output:, width:, height:, format:, quality: 85, max_pixels: nil)
+      Native.crop_north(input.to_s, output.to_s, Integer(width), Integer(height), format.to_s, Integer(quality), max_pixels)
+    end
+
     def downsize(input:, output:, dimensions:, format:, quality: 85, max_pixels: nil)
       probe = DiscourseImageProcessing.probe(input, max_pixels: max_pixels)
       scale = scale_for(probe.width, probe.height, dimensions)

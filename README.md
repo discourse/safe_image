@@ -43,7 +43,6 @@ Implemented:
 Not implemented yet:
 
 - Landlock sandboxing for every compatibility helper; thumbnail supports worker sandbox now, shell-based compatibility helpers still use bounded argv execution unless routed through a sandboxed worker path
-- native-vips north/top crop parity for Discourse avatar crop; ImageMagick remains the exact compatibility backend for that path
 
 ## Why this exists
 
@@ -60,7 +59,10 @@ untrusted-operation block and blocks known Magick loader classes
 ImageMagick is available as an explicit compatibility backend only. It is never
 selected implicitly, it is called with argv arrays rather than shell strings, and
 its paths are restricted to a conservative absolute-path character set to avoid
-ImageMagick pseudo-filename option parsing surprises.
+ImageMagick pseudo-filename option parsing surprises. The gem ships a restrictive
+ImageMagick `policy.xml` and sets `MAGICK_CONFIGURE_PATH` for child commands:
+Ghostscript-backed formats (`PS`, `EPS`, `PDF`, `XPS`, `PCL`, etc.), delegates,
+remote URL coders, filters, and `@file` indirection are denied.
 
 ## Install
 

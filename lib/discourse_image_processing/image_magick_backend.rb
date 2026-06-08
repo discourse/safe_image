@@ -9,6 +9,7 @@ module DiscourseImageProcessing
       "jpg" => "jpeg",
       "jpeg" => "jpeg",
       "png" => "png",
+      "gif" => "gif",
       "webp" => "webp",
       "heic" => "heic",
       "heif" => "heic",
@@ -100,7 +101,9 @@ module DiscourseImageProcessing
     def frame_count(path, timeout: Runner::DEFAULT_TIMEOUT)
       raise UnsupportedFormatError, "ImageMagick not available" unless Runner.available?("identify")
       path = PathSafety.ensure_imagemagick_safe!(path)
-      stdout, = Runner.run!(["identify", "-ping", "-format", "%n\n", path], timeout: timeout)
+      ext = File.extname(path).delete_prefix(".").downcase
+      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, = Runner.run!(["identify", "-ping", "-format", "%n\n", "#{decoder}:#{path}"], timeout: timeout)
       stdout.each_line.first.to_i
     end
 

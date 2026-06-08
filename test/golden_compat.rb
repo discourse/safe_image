@@ -13,6 +13,7 @@ CASES = [
   [:thumbnail_vips, ->(d) { DiscourseImageProcessing.thumbnail(input: JPG, output: File.join(d, "thumb-vips.jpg"), width: 600, height: 400, backend: :vips, optimize: true, max_pixels: 100_000_000) }, [600, 400, "jpg"]],
   [:thumbnail_imagemagick, ->(d) { DiscourseImageProcessing.thumbnail(input: JPG, output: File.join(d, "thumb-im.jpg"), width: 600, height: 400, backend: :imagemagick, optimize: true, max_pixels: 100_000_000) }, [600, 400, "jpg"]],
   [:crop_north_imagemagick, ->(d) { DiscourseImageProcessing.crop(JPG, File.join(d, "crop.jpg"), 400, 400, backend: :imagemagick, max_pixels: 100_000_000) }, [400, 400, "jpg"]],
+  [:crop_north_vips, ->(d) { DiscourseImageProcessing.crop(JPG, File.join(d, "crop-vips.jpg"), 400, 400, backend: :vips, max_pixels: 100_000_000) }, [400, 400, "jpg"]],
   [:downsize_50_imagemagick, ->(d) { DiscourseImageProcessing.downsize(PNG, File.join(d, "down-im.png"), "50%", backend: :imagemagick, max_pixels: 10_000_000) }, [1016, 656, "png"]],
   [:downsize_50_vips, ->(d) { DiscourseImageProcessing.downsize(PNG, File.join(d, "down-vips.png"), "50%", backend: :vips, max_pixels: 10_000_000) }, [1016, 656, "png"]],
   [:downsize_box_vips, ->(d) { DiscourseImageProcessing.downsize(PNG, File.join(d, "down-box.png"), "100x100>", backend: :vips, max_pixels: 10_000_000) }, [100, 65, "png"]],

@@ -35,25 +35,34 @@ module DiscourseImageProcessing
     end
 
     def crop(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil)
-      if backend.to_sym == :vips
-        # Native top-crop is not implemented yet; use exact centre crop rather than
-        # pretending semantics match. Callers that require Discourse's historical
-        # north crop should select the ImageMagick backend for now.
-        return resize(from, to, width, height, quality: quality, backend: :vips, optimize: optimize, max_pixels: max_pixels)
-      end
-
       probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
-      info = ImageMagickBackend.resize_like(
-        input: probe.input,
-        output: Pathname.new(to).expand_path.to_s,
-        width: width,
-        height: height,
-        format: File.extname(to).delete_prefix(".").downcase,
-        quality: quality,
-        crop: :north
-      )
-      Optimizer.optimize(to, mode: :lossless, strip_metadata: true, quality: quality) if optimize
-      result_from_info(probe.input, to, info, "imagemagick")
+      output = Pathname.new(to).expand_path.to_s
+      format = File.extname(output).delete_prefix(".").downcase
+
+      info =
+        if backend.to_sym == :vips
+          VipsBackend.crop_north(
+            input: probe.input,
+            output: output,
+            width: width,
+            height: height,
+            format: format,
+            quality: quality || 85,
+            max_pixels: max_pixels
+          )
+        else
+          ImageMagickBackend.resize_like(
+            input: probe.input,
+            output: output,
+            width: width,
+            height: height,
+            format: format,
+            quality: quality,
+            crop: :north
+          )
+        end
+      Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: quality) if optimize
+      result_from_info(probe.input, output, info, backend.to_sym == :vips ? "libvips-direct" : "imagemagick")
     end
 
     def downsize(from, to, dimensions, backend: :imagemagick, optimize: true, max_pixels: nil, quality: 85)
