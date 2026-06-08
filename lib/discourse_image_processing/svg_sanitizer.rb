@@ -50,15 +50,17 @@ module DiscourseImageProcessing
         end
       end
 
+      attributes_to_delete = []
       element.attributes.each_attribute do |attr|
         name = attr.name.to_s
         value = attr.value.to_s
         allowed = ALLOWED_ATTRIBUTES.include?(name) || name.start_with?("aria-")
         dangerous_value = value.match?(/\b(?:javascript|data):/i) || (value.include?("url(") && value.match?(/https?:/i))
         if !allowed || name.downcase.start_with?("on") || dangerous_value
-          element.delete_attribute(name)
+          attributes_to_delete << name
         end
       end
+      attributes_to_delete.each { |name| element.delete_attribute(name) }
 
       %w[href xlink:href].each do |href|
         next unless element.attributes[href]

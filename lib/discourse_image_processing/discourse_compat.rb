@@ -20,7 +20,7 @@ module DiscourseImageProcessing
         )
       end
 
-      probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
+      probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
       output = Pathname.new(to).expand_path.to_s
       info = ImageMagickBackend.thumbnail(
         input: probe.input,
@@ -35,7 +35,7 @@ module DiscourseImageProcessing
     end
 
     def crop(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil)
-      probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
+      probe = compat_probe(from, backend: backend, max_pixels: max_pixels)
       output = Pathname.new(to).expand_path.to_s
       format = File.extname(output).delete_prefix(".").downcase
 
@@ -66,7 +66,7 @@ module DiscourseImageProcessing
     end
 
     def downsize(from, to, dimensions, backend: :imagemagick, optimize: true, max_pixels: nil, quality: 85)
-      probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
+      probe = compat_probe(from, backend: backend, max_pixels: max_pixels)
       output = Pathname.new(to).expand_path.to_s
       format = File.extname(output).delete_prefix(".").downcase
       info =
@@ -92,7 +92,7 @@ module DiscourseImageProcessing
     end
 
     def convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil)
-      probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
+      probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
       output = Pathname.new(to).expand_path.to_s
       info = ImageMagickBackend.convert_to_jpeg(input: probe.input, output: output, quality: quality)
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: quality) if optimize
@@ -100,25 +100,26 @@ module DiscourseImageProcessing
     end
 
     def fix_orientation(from, to = from, max_pixels: nil)
-      probe = DiscourseImageProcessing.probe(from, max_pixels: max_pixels)
+      probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
       output = Pathname.new(to).expand_path.to_s
       info = ImageMagickBackend.fix_orientation(input: probe.input, output: output)
       result_from_info(probe.input, output, info, "imagemagick")
     end
 
-    def convert_favicon_to_png(from, to, optimize: true)
+    def convert_favicon_to_png(from, to, optimize: true, max_pixels: nil)
+      frame_count(from, max_pixels: max_pixels) if max_pixels
       output = Pathname.new(to).expand_path.to_s
       info = ImageMagickBackend.convert_ico_to_png(input: Pathname.new(from).expand_path.to_s, output: output)
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true) if optimize
       result_from_info(from, output, info, "imagemagick")
     end
 
-    def frame_count(path)
-      ImageMagickBackend.frame_count(path)
+    def frame_count(path, max_pixels: nil)
+      ImageMagickBackend.frame_count(path, max_pixels: max_pixels)
     end
 
-    def animated?(path)
-      frame_count(path).to_i > 1
+    def animated?(path, max_pixels: nil)
+      frame_count(path, max_pixels: max_pixels).to_i > 1
     end
 
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "NimbusSans-Regular")
@@ -133,13 +134,35 @@ module DiscourseImageProcessing
       result_from_info("generated", output, info, "imagemagick")
     end
 
-    def optimize_image!(path, allow_lossy_png: false, strip_metadata: true, quality: nil)
+    def optimize_image!(path, allow_lossy_png: false, strip_metadata: true, quality: nil, strict: true)
       Optimizer.optimize(
         path,
         mode: allow_lossy_png ? :lossy : :lossless,
         strip_metadata: strip_metadata,
-        quality: quality
+        quality: quality,
+        strict: strict
       )
+    end
+
+    def compat_probe(path, backend:, max_pixels: nil)
+      path = Pathname.new(path).expand_path.to_s
+      if backend.to_sym == :vips
+        DiscourseImageProcessing.probe(path, max_pixels: max_pixels)
+      else
+        info = ImageMagickBackend.probe(path, max_pixels: max_pixels)
+        Result.new(
+          input: path,
+          output: nil,
+          input_format: info.fetch(:input_format),
+          output_format: nil,
+          width: info.fetch(:width),
+          height: info.fetch(:height),
+          filesize: File.size(path),
+          backend: "imagemagick",
+          duration_ms: info.fetch(:duration_ms),
+          optimizer: nil
+        )
+      end
     end
 
     def result_from_info(input, output, info, backend)

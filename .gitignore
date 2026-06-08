@@ -3,8 +3,11 @@
 /*.gem
 /*.o
 /*.so
+/lib/*.so
 /ext/**/Makefile
 /ext/**/*.o
 /ext/**/*.so
 /tmp/
 /pkg/
+/.bundle/
+/vendor/bundle/

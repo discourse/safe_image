@@ -78,7 +78,7 @@ Optional command dependencies for compatibility/optimisation paths:
 Ruby runtime dependencies:
 
 - `rexml` for SVG sanitising
-- `landlock` for optional Linux subprocess sandboxing
+- `landlock` for Linux subprocess sandboxing
 
 ```bash
 gem build discourse_image_processing.gemspec
@@ -126,6 +126,15 @@ DiscourseImageProcessing.thumbnail(
   width: 600,
   height: 400,
   execution: :sandbox
+)
+
+# Use :sandbox_if_available only when an explicit best-effort fallback is desired.
+DiscourseImageProcessing.thumbnail(
+  input: "input.jpg",
+  output: "thumb.jpg",
+  width: 600,
+  height: 400,
+  execution: :sandbox_if_available
 )
 DiscourseImageProcessing.sandbox_available?
 ```

@@ -17,6 +17,21 @@ module DiscourseImageProcessing
       "ico" => "ico"
     }.freeze
 
+    def probe(path, timeout: Runner::DEFAULT_TIMEOUT, max_pixels: nil)
+      raise UnsupportedFormatError, "ImageMagick not available" unless Runner.available?("identify")
+      path = PathSafety.ensure_imagemagick_safe!(path)
+      ext = File.extname(path).delete_prefix(".").downcase
+      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, = Runner.run!(["identify", "-ping", "-format", "%m %w %h %n\n", "#{decoder}:#{path}"], timeout: timeout)
+      _magick_format, width, height, frames = stdout.each_line.first.to_s.split
+      width = width.to_i
+      height = height.to_i
+      if max_pixels && width * height > Integer(max_pixels)
+        raise LimitError, "image has #{width * height} pixels, exceeds #{max_pixels}"
+      end
+      { input_format: ext == "jpeg" ? "jpg" : ext, width: width, height: height, frames: frames.to_i, duration_ms: 0.0 }
+    end
+
     def thumbnail(input:, output:, width:, height:, format:, quality:, timeout: Runner::DEFAULT_TIMEOUT)
       resize_like(input: input, output: output, width: width, height: height, format: format, quality: quality, crop: :centre, timeout: timeout)
     end
@@ -98,13 +113,17 @@ module DiscourseImageProcessing
       run_image_command(argv, output, "ico", "png", timeout)
     end
 
-    def frame_count(path, timeout: Runner::DEFAULT_TIMEOUT)
+    def frame_count(path, timeout: Runner::DEFAULT_TIMEOUT, max_pixels: nil)
       raise UnsupportedFormatError, "ImageMagick not available" unless Runner.available?("identify")
       path = PathSafety.ensure_imagemagick_safe!(path)
       ext = File.extname(path).delete_prefix(".").downcase
       decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      stdout, = Runner.run!(["identify", "-ping", "-format", "%n\n", "#{decoder}:#{path}"], timeout: timeout)
-      stdout.each_line.first.to_i
+      stdout, = Runner.run!(["identify", "-ping", "-format", "%w %h %n\n", "#{decoder}:#{path}"], timeout: timeout)
+      width, height, frames = stdout.each_line.first.to_s.split.map(&:to_i)
+      if max_pixels && width.to_i * height.to_i > Integer(max_pixels)
+        raise LimitError, "image has #{width * height} pixels, exceeds #{max_pixels}"
+      end
+      frames.to_i
     end
 
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize:, font: "NimbusSans-Regular", timeout: Runner::DEFAULT_TIMEOUT)

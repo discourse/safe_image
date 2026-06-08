@@ -3,7 +3,7 @@
 require "tmpdir"
 require_relative "../lib/discourse_image_processing"
 
-FIXTURES = "/home/agent/source/discourse/spec/fixtures/images"
+FIXTURES = File.expand_path("fixtures/images", __dir__)
 JPG = File.join(FIXTURES, "huge.jpg")
 PNG = File.join(FIXTURES, "large_and_unoptimized.png")
 HEIC = File.join(FIXTURES, "should_be_jpeg.heic")

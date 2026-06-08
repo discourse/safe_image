@@ -29,4 +29,45 @@ Dir.mktmpdir do |dir|
   end
 
   puts "OK ImageMagick policy denies Ghostscript-backed formats"
+
+  fake_dir = File.join(dir, "fake-bin")
+  Dir.mkdir(fake_dir)
+  fake_marker = File.join(dir, "fake-ran")
+  fake_magick = File.join(fake_dir, "magick")
+  File.write(fake_magick, "#!/bin/sh\ntouch #{fake_marker}\nexit 0\n")
+  File.chmod(0o755, fake_magick)
+
+  begin
+    DiscourseImageProcessing::Runner.run!(
+      ["magick", ps, File.join(dir, "out3.png")],
+      env: { "PATH" => fake_dir, "MAGICK_CONFIGURE_PATH" => "/tmp" }
+    )
+    abort "ImageMagick unexpectedly processed PostScript with env override"
+  rescue DiscourseImageProcessing::CommandError
+  end
+  abort "Runner used caller-controlled PATH" if File.exist?(fake_marker)
+  puts "OK Runner ignores protected env overrides"
 end
+
+begin
+  original = DiscourseImageProcessing::Sandbox.method(:available?)
+  DiscourseImageProcessing::Sandbox.define_singleton_method(:available?) { false }
+  Dir.mktmpdir do |dir|
+    begin
+      DiscourseImageProcessing.thumbnail(
+        input: File.expand_path("fixtures/images/huge.jpg", __dir__),
+        output: File.join(dir, "x.jpg"),
+        width: 10,
+        height: 10,
+        execution: :sandbox
+      )
+      abort "strict sandbox unexpectedly fell back to inline"
+    rescue DiscourseImageProcessing::Error => e
+      abort "wrong sandbox error: #{e.message}" unless e.message.include?("sandbox execution requested")
+    end
+  end
+ensure
+  DiscourseImageProcessing::Sandbox.define_singleton_method(:available?, original) if original
+end
+
+puts "OK strict sandbox does not silently degrade"

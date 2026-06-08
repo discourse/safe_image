@@ -47,7 +47,11 @@ module DiscourseImageProcessing
         raise UnsupportedFormatError, "unsupported output format: #{out_format.inspect}"
       end
 
-      if @execution == :sandbox
+      if @execution == :sandbox || @execution == :sandbox_if_available
+        if @execution == :sandbox && !Sandbox.available?
+          raise Error, "sandbox execution requested but Landlock::SafeExec is unavailable"
+        end
+
         info = Sandbox.thumbnail(
           input: input.to_s,
           output: output.to_s,

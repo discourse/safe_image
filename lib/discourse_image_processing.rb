@@ -42,8 +42,8 @@ module DiscourseImageProcessing
     )
   end
 
-  def optimize(path, mode: :lossless, strip_metadata: true, quality: nil)
-    Optimizer.optimize(path, mode: mode, strip_metadata: strip_metadata, quality: quality)
+  def optimize(path, mode: :lossless, strip_metadata: true, quality: nil, strict: true)
+    Optimizer.optimize(path, mode: mode, strip_metadata: strip_metadata, quality: quality, strict: strict)
   end
 
   def resize(...) = DiscourseCompat.resize(...)

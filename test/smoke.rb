@@ -4,7 +4,7 @@ require "tmpdir"
 require "pathname"
 require_relative "../lib/discourse_image_processing"
 
-input = ARGV[0] || "/home/agent/source/discourse/spec/fixtures/images/huge.jpg"
+input = ARGV[0] || File.expand_path("fixtures/images/huge.jpg", __dir__)
 Dir.mktmpdir do |dir|
   out = File.join(dir, "thumb.jpg")
   probe = DiscourseImageProcessing.probe(input, max_pixels: 100_000_000)

@@ -3,7 +3,7 @@
 require "tmpdir"
 require_relative "../lib/discourse_image_processing"
 
-FIXTURES = "/home/agent/source/discourse/spec/fixtures/images"
+FIXTURES = File.expand_path("fixtures/images", __dir__)
 JPG = File.join(FIXTURES, "huge.jpg")
 PNG = File.join(FIXTURES, "large_and_unoptimized.png")
 HEIC = File.join(FIXTURES, "should_be_jpeg.heic")
@@ -34,10 +34,10 @@ Dir.mktmpdir do |dir|
   end
 
   svg = File.join(dir, "bad.svg")
-  File.write(svg, %q{<svg onload="x"><script>x</script><rect width="1" height="1" onclick="x"/></svg>})
+  File.write(svg, %q{<svg onload="x" onclick="y"><script>x</script><rect width="1" height="1" onclick="x" onmouseover="y" href="javascript:z" fill="url(http://evil)"/></svg>})
   DiscourseImageProcessing.sanitize_svg!(svg)
   sanitized = File.read(svg)
-  failures << "svg sanitizer left dangerous content" if sanitized.match?(/script|onload|onclick/)
+  failures << "svg sanitizer left dangerous content" if sanitized.match?(/script|onload|onclick|onmouseover|javascript|http:\/\/evil/)
 
   abort failures.join("\n") if failures.any?
   puts "OK golden compatibility suite"
