@@ -463,7 +463,32 @@ The sanitizer removes unsafe elements/attributes such as scripts and event
 handlers. It is intentionally conservative rather than a full browser-grade SVG
 implementation.
 
-## Security posture without Landlock
+## Security posture
+
+Safe Image is a hardened boundary for untrusted image processing, not a magic
+wand. The goal is to centralize risky operations, make the safe path boring, and
+remove common image-processing foot-guns.
+
+Baseline hardening:
+
+- external commands use argv arrays, never shell strings
+- command environment, temp/home/cache directories, stdout/stderr size, and
+  process-group timeout cleanup are controlled
+- libvips loaders are selected explicitly from an allowlist
+- libvips' untrusted-operation block is enabled in-process
+- libvips ImageMagick loader classes are blocked in the native extension
+- libvips cache is disabled by default in-process
+- local untrusted input/output paths reject symlinks and symlinked path components
+- generated images strip metadata where applicable
+- optional `max_pixels` checks fail before expensive work
+- remote fetch uses SSRF hardening: scheme/port restrictions, special-use IP
+  blocking, DNS pinning, redirect limits, HTTPS-to-HTTP rejection, proxy-env
+  bypass prevention, request-header allowlists, content-type/extension agreement,
+  and probe-before-yield
+- SVG metadata uses a bounded parser; SVG is not handed to ImageMagick for probing
+- SVG sanitising is conservative and allowlist based
+
+### Security posture without Landlock
 
 Without Landlock, Safe Image still hardens the ImageMagick path substantially:
 
@@ -574,6 +599,32 @@ bundle exec rake
 The atomic sandbox suite skips when `landlock` is not installed or unavailable on
 the host kernel.
 
+## Security reporting
+
+Please report suspected security issues privately to `sam@discourse.org`.
+
+See [`SECURITY.md`](SECURITY.md) for the threat model, non-goals, and reporting
+checklist.
+
 ## License
 
-MIT. `libvips` itself is LGPL-2.1-or-later and is dynamically linked.
+Safe Image is MIT licensed.
+
+The gem dynamically links to system `libvips`; `libvips` is
+LGPL-2.1-or-later. Safe Image does not vendor `libvips`.
+
+Optional command-line tools are discovered at runtime and executed as external
+programs; they are not bundled into the gem. Typical licenses for those optional
+tools are:
+
+| Tool | Purpose | Typical license |
+| --- | --- | --- |
+| ImageMagick `magick` / `convert` / `identify` | compatibility operations | ImageMagick license |
+| `jpegoptim` | JPEG lossless optimisation / metadata stripping | GPL-2.0-or-later |
+| `oxipng` | PNG lossless optimisation | MIT |
+| `pngquant` | optional lossy PNG quantisation | GPL-3.0-or-later / ISC / BSD-2-Clause components |
+| `cjpegli` / `djpegli` / `cjxl` | optional JPEG/JPEG XL tooling when installed | BSD-3-Clause via libjxl |
+| `heif-enc` / libheif tools | optional HEIC/AVIF tooling when installed | LGPL-3.0-or-later |
+
+Deployment packages may vary; check your distribution's package metadata if
+license compliance depends on the exact binary build.
