@@ -23,8 +23,13 @@ module SafeImage
 
     module_function
 
-    def sanitize!(path)
+    def sanitize!(path, max_pixels: nil)
       path = Pathname.new(SvgMetadata.safe_svg_path(path))
+      begin
+        SvgMetadata.dimensions(path.to_s, max_pixels: max_pixels)
+      rescue InvalidImageError => e
+        raise unless e.message.include?("dimensions are missing")
+      end
       doc = SvgMetadata.parse(path.to_s)
 
       clean = REXML::Document.new

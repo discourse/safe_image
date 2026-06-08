@@ -22,6 +22,7 @@ module SafeImage
     USER_AGENT = "safe_image/#{VERSION}".freeze
 
     SAFE_CROSS_ORIGIN_REDIRECT_HEADERS = %w[accept accept-encoding user-agent].freeze
+    SAFE_INITIAL_REQUEST_HEADERS = SAFE_CROSS_ORIGIN_REDIRECT_HEADERS
     FORBIDDEN_REQUEST_HEADERS = %w[
       host connection keep-alive proxy-authenticate proxy-authorization
       proxy-connection te trailer transfer-encoding upgrade
@@ -118,11 +119,13 @@ module SafeImage
           renamed = path.sub(/\.bin\z/, ext)
           FileUtils.mv(path, renamed)
           begin
+            validate_downloaded_image!(renamed, ext)
             yield renamed
           ensure
             FileUtils.rm_f(renamed)
           end
         else
+          validate_downloaded_image!(path, ext)
           yield path
         end
       end
@@ -163,7 +166,7 @@ module SafeImage
       request["User-Agent"] = USER_AGENT
       request["Accept"] = "image/*,*/*;q=0.1"
       request["Accept-Encoding"] = "identity"
-      filtered_headers(headers).each { |key, value| request[key.to_s] = value.to_s }
+      initial_headers(headers).each { |key, value| request[key.to_s] = value.to_s }
 
       bytes = 0
       content_type = nil
@@ -252,6 +255,10 @@ module SafeImage
       headers.reject { |key, _| FORBIDDEN_REQUEST_HEADERS.include?(key.to_s.downcase) }
     end
 
+    def initial_headers(headers)
+      filtered_headers(headers).select { |key, _| SAFE_INITIAL_REQUEST_HEADERS.include?(key.to_s.downcase) }
+    end
+
     def redirect_headers(headers, from:, to:)
       headers = filtered_headers(headers)
       return headers if same_origin?(from, to)
@@ -275,11 +282,27 @@ module SafeImage
     end
 
     def extension_for(uri, content_type)
-      ext = File.extname(uri.path).downcase
-      return ext if EXTENSIONS.include?(ext)
+      content_ext = CONTENT_TYPE_EXTENSIONS[content_type]
+      raise UnsupportedFormatError, "remote image has unsupported or missing content type: #{content_type.inspect}" unless content_ext
 
-      CONTENT_TYPE_EXTENSIONS.fetch(content_type) do
-        raise UnsupportedFormatError, "remote image has unsupported or missing content type: #{content_type.inspect}"
+      ext = File.extname(uri.path).downcase
+      if EXTENSIONS.include?(ext)
+        normalized_ext = ext == ".jpeg" ? ".jpg" : ext
+        normalized_content_ext = content_ext == ".jpeg" ? ".jpg" : content_ext
+        unless normalized_ext == normalized_content_ext
+          raise UnsupportedFormatError, "remote image extension #{ext.inspect} does not match content type #{content_type.inspect}"
+        end
+        return ext
+      end
+
+      content_ext
+    end
+
+    def validate_downloaded_image!(path, ext)
+      if ext == ".svg"
+        SvgMetadata.probe(path)
+      else
+        SafeImage.probe(path)
       end
     end
   end

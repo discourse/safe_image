@@ -3,6 +3,9 @@
 require "tmpdir"
 require_relative "../lib/safe_image"
 
+FIXTURES = File.expand_path("fixtures/images", __dir__)
+JPG = File.join(FIXTURES, "huge.jpg")
+
 Dir.mktmpdir do |dir|
   ps = File.join(dir, "ghostscript.ps")
   File.write(ps, "%!PS\n/Times-Roman findfont 12 scalefont setfont\n100 700 moveto (x) show\nshowpage\n")
@@ -63,6 +66,32 @@ Dir.mktmpdir do |dir|
   end
 
   puts "OK Runner ignores protected env overrides"
+
+  begin
+    SafeImage::Native.thumbnail(JPG, File.join(dir, "bad-native.jpg"), 0, 10, "jpg", 85, nil)
+    abort "native thumbnail accepted zero width"
+  rescue ArgumentError
+  end
+
+  begin
+    SafeImage::Native.thumbnail(JPG, File.join(dir, "bad-quality.jpg"), 10, 10, "jpg", 101, nil)
+    abort "native thumbnail accepted invalid quality"
+  rescue ArgumentError
+  end
+
+  begin
+    SafeImage::Native.resize(JPG, File.join(dir, "bad-scale.jpg"), Float::NAN, "jpg", 85, nil)
+    abort "native resize accepted NaN scale"
+  rescue ArgumentError
+  end
+
+  begin
+    SafeImage::Native.thumbnail(JPG, File.join(dir, "bad-max.jpg"), 10, 10, "jpg", 85, 0)
+    abort "native thumbnail accepted non-positive max_pixels"
+  rescue ArgumentError
+  end
+
+  puts "OK native argument validation"
 end
 
 begin
@@ -109,6 +138,14 @@ Dir.mktmpdir do |dir|
   abort "SVG sanitizer kept external url" if cleaned.include?("evil.example")
   abort "SVG sanitizer kept event handler" if cleaned.include?("onclick")
   abort "SVG sanitizer stripped fragment url" unless cleaned.include?("url(#safe)")
+
+  huge_svg = File.join(dir, "huge.svg")
+  File.write(huge_svg, '<svg xmlns="http://www.w3.org/2000/svg" width="100000" height="100000"></svg>')
+  begin
+    SafeImage.sanitize_svg!(huge_svg)
+    abort "SVG sanitizer accepted huge dimensions"
+  rescue SafeImage::LimitError
+  end
 end
 
 puts "OK SVG sanitizer rejects non-SVG roots and external URLs"

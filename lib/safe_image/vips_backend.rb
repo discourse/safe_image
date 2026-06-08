@@ -15,16 +15,25 @@ module SafeImage
       scale = scale_for(probe.width, probe.height, dimensions)
       scale = [scale, 1.0].min
       if scale >= 1.0
-        FileUtils.cp(input, output)
-        return {
-          input_format: probe.input_format,
-          output_format: format,
-          width: probe.width,
-          height: probe.height,
-          duration_ms: 0.0
-        }
+        if normalized_format(probe.input_format) == normalized_format(format)
+          FileUtils.cp(input, output)
+          return {
+            input_format: probe.input_format,
+            output_format: normalized_format(format),
+            width: probe.width,
+            height: probe.height,
+            duration_ms: 0.0
+          }
+        end
+
+        return Native.resize(input.to_s, output.to_s, 1.0, normalized_format(format), Integer(quality), max_pixels)
       end
-      Native.resize(input.to_s, output.to_s, scale, format.to_s, Integer(quality), max_pixels)
+      Native.resize(input.to_s, output.to_s, scale, normalized_format(format), Integer(quality), max_pixels)
+    end
+
+    def normalized_format(format)
+      format = format.to_s.downcase
+      format == "jpeg" ? "jpg" : format
     end
 
     def scale_for(width, height, dimensions)

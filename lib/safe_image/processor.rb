@@ -122,9 +122,7 @@ module SafeImage
     private
 
     def safe_existing_file!(path)
-      path = Pathname.new(PathSafety.local_path(path)).expand_path
-      raise UnsafePathError, "path contains NUL" if path.to_s.include?("\0")
-      raise UnsafePathError, "not a file: #{path}" unless path.file?
+      path = PathSafety.ensure_regular_file!(path)
       ext = path.extname.delete_prefix(".").downcase
       ext = "jpg" if ext == "jpeg"
       raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}" unless SUPPORTED_INPUTS.include?(ext)
@@ -132,9 +130,7 @@ module SafeImage
     end
 
     def safe_output_path!(path)
-      path = Pathname.new(path).expand_path
-      raise UnsafePathError, "path contains NUL" if path.to_s.include?("\0")
-      path
+      PathSafety.ensure_safe_output_path!(path)
     end
 
     def validate_pixels!(width, height)

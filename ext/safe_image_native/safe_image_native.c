@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 static VALUE mSafeImage;
 static VALUE mNative;
@@ -103,14 +104,31 @@ static VipsImage *load_explicit(const char *path, const char **fmt_out) {
   return image;
 }
 
-static void validate_pixels_or_raise(VipsImage *image, VALUE max_pixels_val) {
-  if (NIL_P(max_pixels_val)) return;
+static void validate_quality_or_raise(int quality) {
+  if (quality < 1 || quality > 100) rb_raise(rb_eArgError, "quality must be 1..100");
+}
+
+static void validate_dimensions_or_raise(int width, int height) {
+  if (width <= 0 || height <= 0) rb_raise(rb_eArgError, "width and height must be positive");
+}
+
+static void validate_scale_or_raise(double scale) {
+  if (!isfinite(scale) || scale <= 0.0 || scale > 100.0) rb_raise(rb_eArgError, "scale must be finite and in 0..100");
+}
+
+static int pixels_exceed_limit(VipsImage *image, VALUE max_pixels_val, long long *pixels_out, long long *max_out) {
+  if (NIL_P(max_pixels_val)) return 0;
   long long max_pixels = NUM2LL(max_pixels_val);
-  if (max_pixels <= 0) return;
+  if (max_pixels <= 0) rb_raise(rb_eArgError, "max_pixels must be positive");
+  if (image->Xsize <= 0 || image->Ysize <= 0) rb_raise(eInvalid, "image dimensions are invalid");
   long long pixels = (long long)image->Xsize * (long long)image->Ysize;
-  if (pixels > max_pixels) {
-    rb_raise(eLimit, "image has %lld pixels, exceeds %lld", pixels, max_pixels);
-  }
+  if (pixels_out) *pixels_out = pixels;
+  if (max_out) *max_out = max_pixels;
+  return pixels > max_pixels;
+}
+
+static void raise_pixels_limit(long long pixels, long long max_pixels) {
+  rb_raise(eLimit, "image has %lld pixels, exceeds %lld", pixels, max_pixels);
 }
 
 static int save_explicit(VipsImage *image, const char *path, const char *fmt, int quality) {
@@ -145,13 +163,16 @@ static VALUE rb_probe(VALUE self, VALUE path_val) {
   double start = now_ms();
   const char *fmt = NULL;
   VipsImage *image = load_explicit(StringValueCStr(path_val), &fmt);
+  int width = image->Xsize;
+  int height = image->Ysize;
+  double duration_ms = now_ms() - start;
+  g_object_unref(image);
 
   VALUE hash = rb_hash_new();
   rb_hash_aset(hash, ID2SYM(rb_intern("format")), rb_str_new_cstr(fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(image->Xsize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(image->Ysize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(now_ms() - start));
-  g_object_unref(image);
+  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(width));
+  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(height));
+  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(duration_ms));
   return hash;
 }
 
@@ -162,13 +183,19 @@ static VALUE rb_thumbnail(VALUE self, VALUE input_val, VALUE output_val, VALUE w
   int width = NUM2INT(width_val);
   int height = NUM2INT(height_val);
   int quality = NUM2INT(quality_val);
+  validate_dimensions_or_raise(width, height);
+  validate_quality_or_raise(quality);
   const char *out_fmt = normalized_format(StringValueCStr(format_val));
   if (!out_fmt || strcmp(out_fmt, "heic") == 0) rb_raise(eUnsupported, "unsupported output format");
 
   double start = now_ms();
   const char *input_fmt = NULL;
   VipsImage *in = load_explicit(StringValueCStr(input_val), &input_fmt);
-  validate_pixels_or_raise(in, max_pixels_val);
+  long long pixels = 0, max_pixels = 0;
+  if (pixels_exceed_limit(in, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(in);
+    raise_pixels_limit(pixels, max_pixels);
+  }
 
   VipsImage *rot = NULL;
   if (vips_autorot(in, &rot, NULL) != 0) {
@@ -195,16 +222,19 @@ static VALUE rb_thumbnail(VALUE self, VALUE input_val, VALUE output_val, VALUE w
     raise_vips();
   }
 
-  VALUE hash = rb_hash_new();
-  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(thumb->Xsize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(thumb->Ysize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(now_ms() - start));
-
+  int out_width = thumb->Xsize;
+  int out_height = thumb->Ysize;
+  double duration_ms = now_ms() - start;
   g_object_unref(thumb);
   g_object_unref(rot);
   g_object_unref(in);
+
+  VALUE hash = rb_hash_new();
+  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(out_width));
+  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(out_height));
+  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(duration_ms));
   return hash;
 }
 
@@ -214,14 +244,19 @@ static VALUE rb_resize(VALUE self, VALUE input_val, VALUE output_val, VALUE scal
   Check_Type(format_val, T_STRING);
   double scale = NUM2DBL(scale_val);
   int quality = NUM2INT(quality_val);
-  if (scale <= 0.0) rb_raise(rb_eArgError, "scale must be positive");
+  validate_scale_or_raise(scale);
+  validate_quality_or_raise(quality);
   const char *out_fmt = normalized_format(StringValueCStr(format_val));
   if (!out_fmt || strcmp(out_fmt, "heic") == 0) rb_raise(eUnsupported, "unsupported output format");
 
   double start = now_ms();
   const char *input_fmt = NULL;
   VipsImage *in = load_explicit(StringValueCStr(input_val), &input_fmt);
-  validate_pixels_or_raise(in, max_pixels_val);
+  long long pixels = 0, max_pixels = 0;
+  if (pixels_exceed_limit(in, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(in);
+    raise_pixels_limit(pixels, max_pixels);
+  }
 
   VipsImage *rot = NULL;
   if (vips_autorot(in, &rot, NULL) != 0) {
@@ -243,16 +278,19 @@ static VALUE rb_resize(VALUE self, VALUE input_val, VALUE output_val, VALUE scal
     raise_vips();
   }
 
-  VALUE hash = rb_hash_new();
-  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(out->Xsize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(out->Ysize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(now_ms() - start));
-
+  int out_width = out->Xsize;
+  int out_height = out->Ysize;
+  double duration_ms = now_ms() - start;
   g_object_unref(out);
   g_object_unref(rot);
   g_object_unref(in);
+
+  VALUE hash = rb_hash_new();
+  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(out_width));
+  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(out_height));
+  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(duration_ms));
   return hash;
 }
 
@@ -263,14 +301,19 @@ static VALUE rb_crop_north(VALUE self, VALUE input_val, VALUE output_val, VALUE 
   int width = NUM2INT(width_val);
   int height = NUM2INT(height_val);
   int quality = NUM2INT(quality_val);
-  if (width <= 0 || height <= 0) rb_raise(rb_eArgError, "width and height must be positive");
+  validate_dimensions_or_raise(width, height);
+  validate_quality_or_raise(quality);
   const char *out_fmt = normalized_format(StringValueCStr(format_val));
   if (!out_fmt || strcmp(out_fmt, "heic") == 0) rb_raise(eUnsupported, "unsupported output format");
 
   double start = now_ms();
   const char *input_fmt = NULL;
   VipsImage *in = load_explicit(StringValueCStr(input_val), &input_fmt);
-  validate_pixels_or_raise(in, max_pixels_val);
+  long long pixels = 0, max_pixels = 0;
+  if (pixels_exceed_limit(in, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(in);
+    raise_pixels_limit(pixels, max_pixels);
+  }
 
   VipsImage *rot = NULL;
   if (vips_autorot(in, &rot, NULL) != 0) {
@@ -309,17 +352,20 @@ static VALUE rb_crop_north(VALUE self, VALUE input_val, VALUE output_val, VALUE 
     raise_vips();
   }
 
-  VALUE hash = rb_hash_new();
-  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
-  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(crop->Xsize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(crop->Ysize));
-  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(now_ms() - start));
-
+  int out_width = crop->Xsize;
+  int out_height = crop->Ysize;
+  double duration_ms = now_ms() - start;
   g_object_unref(crop);
   g_object_unref(resized);
   g_object_unref(rot);
   g_object_unref(in);
+
+  VALUE hash = rb_hash_new();
+  rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("output_format")), rb_str_new_cstr(out_fmt));
+  rb_hash_aset(hash, ID2SYM(rb_intern("width")), INT2NUM(out_width));
+  rb_hash_aset(hash, ID2SYM(rb_intern("height")), INT2NUM(out_height));
+  rb_hash_aset(hash, ID2SYM(rb_intern("duration_ms")), DBL2NUM(duration_ms));
   return hash;
 }
 

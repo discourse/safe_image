@@ -6,6 +6,7 @@ require_relative "../lib/safe_image"
 FIXTURES = File.expand_path("fixtures/images", __dir__)
 JPG = File.join(FIXTURES, "huge.jpg")
 GIF = File.join(FIXTURES, "animated.gif")
+PNG = File.join(FIXTURES, "large_and_unoptimized.png")
 
 blocked = %w[
   0.0.0.0 10.0.0.1 100.64.0.1 127.0.0.1 169.254.1.1 172.16.0.1
@@ -45,6 +46,11 @@ filtered_headers = SafeImage::Remote.filtered_headers("Host" => "evil", "Connect
 raise "filtered headers kept Host" if filtered_headers.key?("Host")
 raise "filtered headers stripped normal header" unless filtered_headers["X-Test"] == "ok"
 
+initial_headers = SafeImage::Remote.initial_headers("Authorization" => "Bearer test-token", "Cookie" => "test-cookie", "Accept" => "image/*")
+raise "initial headers leaked Authorization" if initial_headers.key?("Authorization")
+raise "initial headers leaked Cookie" if initial_headers.key?("Cookie")
+raise "initial headers stripped safe Accept" unless initial_headers["Accept"] == "image/*"
+
 begin
   SafeImage::Remote.validate_uri!(URI("https://example.com:81/x"), allow_private: false)
   abort "remote disallowed port unexpectedly accepted"
@@ -78,6 +84,14 @@ thread = Thread.new do
     when "/icon.svg"
       body = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="34"></svg>'
       socket.write "HTTP/1.1 200 OK\r\nContent-Type: image/svg+xml\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
+      socket.write body
+    when "/html-as-jpg.jpg"
+      body = "<!doctype html><script>alert(1)</script>"
+      socket.write "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
+      socket.write body
+    when "/png-as-jpg.jpg"
+      body = File.binread(PNG)
+      socket.write "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n"
       socket.write body
     when "/redirect"
       socket.write "HTTP/1.1 302 Found\r\nLocation: /huge.jpg\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -117,6 +131,18 @@ begin
   raise "remote svg type mismatch" unless SafeImage.remote_type("#{url}/icon.svg", allow_private: true, max_bytes: 1_000_000) == :svg
   raise "remote svg size mismatch" unless SafeImage.remote_size("#{url}/icon.svg", allow_private: true, max_bytes: 1_000_000) == [12, 34]
   raise "remote animated mismatch" unless SafeImage.remote_animated?("#{url}/animated", allow_private: true, max_bytes: 1_000_000, max_pixels: 10_000_000)
+
+  begin
+    SafeImage.fetch_remote("#{url}/html-as-jpg.jpg", allow_private: true, max_bytes: 1_000_000) { |_| }
+    abort "remote fetch accepted non-image content type"
+  rescue SafeImage::UnsupportedFormatError
+  end
+
+  begin
+    SafeImage.fetch_remote("#{url}/png-as-jpg.jpg", allow_private: true, max_bytes: 1_000_000) { |_| }
+    abort "remote fetch accepted content-type/extension mismatch"
+  rescue SafeImage::UnsupportedFormatError
+  end
 
   begin
     SafeImage.remote_size("#{url}/huge.jpg", allow_private: true, max_bytes: 10)

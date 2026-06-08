@@ -21,7 +21,7 @@ module SafeImage
       end
 
       probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       info = ImageMagickBackend.thumbnail(
         input: probe.input,
         output: output,
@@ -36,7 +36,7 @@ module SafeImage
 
     def crop(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil)
       probe = compat_probe(from, backend: backend, max_pixels: max_pixels)
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       format = File.extname(output).delete_prefix(".").downcase
 
       info =
@@ -67,7 +67,7 @@ module SafeImage
 
     def downsize(from, to, dimensions, backend: :imagemagick, optimize: true, max_pixels: nil, quality: 85)
       probe = compat_probe(from, backend: backend, max_pixels: max_pixels)
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       format = File.extname(output).delete_prefix(".").downcase
       info =
         if backend.to_sym == :vips
@@ -93,7 +93,7 @@ module SafeImage
 
     def convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil)
       probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       info = ImageMagickBackend.convert_to_jpeg(input: probe.input, output: output, quality: quality)
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: quality) if optimize
       result_from_info(probe.input, output, info, "imagemagick")
@@ -101,14 +101,14 @@ module SafeImage
 
     def fix_orientation(from, to = from, max_pixels: nil)
       probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       info = ImageMagickBackend.fix_orientation(input: probe.input, output: output)
       result_from_info(probe.input, output, info, "imagemagick")
     end
 
     def convert_favicon_to_png(from, to, optimize: true, max_pixels: nil)
       frame_count(from, max_pixels: max_pixels) if max_pixels
-      output = Pathname.new(to).expand_path.to_s
+      output = PathSafety.ensure_safe_output_path!(to).to_s
       info = ImageMagickBackend.convert_ico_to_png(input: Pathname.new(from).expand_path.to_s, output: output)
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true) if optimize
       result_from_info(from, output, info, "imagemagick")
@@ -123,8 +123,9 @@ module SafeImage
     end
 
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "NimbusSans-Regular")
+      output = PathSafety.ensure_safe_output_path!(output).to_s
       info = ImageMagickBackend.letter_avatar(
-        output: Pathname.new(output).expand_path.to_s,
+        output: output,
         size: size,
         background_rgb: background_rgb,
         letter: letter,

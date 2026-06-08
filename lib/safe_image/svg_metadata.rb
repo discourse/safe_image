@@ -64,9 +64,7 @@ module SafeImage
     end
 
     def safe_svg_path(path)
-      path = Pathname.new(PathSafety.local_path(path)).expand_path
-      raise UnsafePathError, "path contains NUL" if path.to_s.include?("\0")
-      raise UnsafePathError, "not a file: #{path}" unless path.file?
+      path = PathSafety.ensure_regular_file!(path)
       raise UnsupportedFormatError, "not an SVG file: #{path}" unless File.extname(path.to_s).downcase == ".svg"
       path.to_s
     end

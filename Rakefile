@@ -15,6 +15,8 @@ task :test => :compile do
   ruby "-Ilib -I. test/golden_compat.rb"
   ruby "-Ilib -I. test/imagemagick_parity.rb"
   ruby "-Ilib -I. test/safety_policy.rb"
+  ruby "-Ilib -I. test/path_safety.rb"
+  ruby "-Ilib -I. test/vips_output_format.rb"
   ruby "-Ilib -I. test/local_metadata.rb"
   ruby "-Ilib -I. test/svg_metadata.rb"
   ruby "-Ilib -I. test/remote_metadata.rb"

@@ -28,6 +28,8 @@ What it does:
 - blocks libvips ImageMagick loader classes in the native extension
 - disables libvips cache by default in-process
 - strips metadata on generated images where applicable
+- rejects symlinked local input/output paths and symlinked path components for
+  untrusted file-processing paths
 - enforces optional `max_pixels` guards before expensive work
 - ships a restrictive ImageMagick `policy.xml`
 - denies Ghostscript-backed formats and dangerous ImageMagick features:
@@ -238,11 +240,17 @@ Remote fetching is deliberately conservative:
 - same-origin redirects keep caller headers; cross-origin redirects use a small
   header allowlist (`Accept`, `Accept-Encoding`, `User-Agent`) rather than a
   blacklist
+- initial caller-supplied request headers use the same small allowlist; cookies,
+  authorization headers, and custom auth headers are not forwarded by default
 - hop-by-hop/proxy/`Host` request headers are rejected before any request
 - private, loopback, link-local, multicast, documentation, benchmarking,
   carrier-grade NAT, IPv4-mapped IPv6, NAT64, 6to4/Teredo, and other
   special-use resolved addresses are rejected by default
 - no image decoding happens directly from the socket
+- the final response `Content-Type` must be an allowed image type and must agree
+  with an image-looking URL extension when one is present
+- downloaded content is probed before `fetch_remote` yields the tempfile, so the
+  raw downloader cannot be used as a blind extension-based file saver
 - SVG remote metadata uses the same bounded SVG metadata parser after download;
   SVG is not handed to ImageMagick for probing
 
