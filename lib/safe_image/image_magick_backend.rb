@@ -107,19 +107,27 @@ module SafeImage
       run_image_command(argv, output, ext, format, timeout)
     end
 
-    def convert_to_jpeg(input:, output:, quality: nil, timeout: Runner::DEFAULT_TIMEOUT)
+    def convert(input:, output:, format:, quality: nil, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
       input = PathSafety.ensure_imagemagick_input_file!(input)
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
       ext = File.extname(input).delete_prefix(".").downcase
       decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      source = "#{decoder}:#{input}[0]"
+      normalized_format = format.to_s.downcase
+      normalized_format = "jpg" if normalized_format == "jpeg"
+      output_arg = output_spec(normalized_format, output)
       quality = validate_quality!(quality)
-      argv = [command, *IMAGEMAGICK_LIMIT_ARGS, source, "-auto-orient", "-background", "white", "-interlace", "none", "-flatten"]
+
+      argv = [command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{input}[0]", "-auto-orient", "-interlace", "none"]
+      argv.concat(["-background", "white", "-flatten"]) if normalized_format == "jpg"
       argv.concat(["-quality", quality.to_s]) if quality
-      argv << output_spec("jpg", output)
-      run_image_command(argv, output, ext, "jpg", timeout)
+      argv << output_arg
+      run_image_command(argv, output, ext, normalized_format, timeout)
+    end
+
+    def convert_to_jpeg(input:, output:, quality: nil, timeout: Runner::DEFAULT_TIMEOUT)
+      convert(input: input, output: output, format: "jpg", quality: quality, timeout: timeout)
     end
 
     def convert_ico_to_png(input:, output:, timeout: Runner::DEFAULT_TIMEOUT)

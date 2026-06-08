@@ -91,12 +91,17 @@ module SafeImage
       result_from_info(probe.input, output, info, backend.to_sym == :vips ? "libvips-direct" : "imagemagick")
     end
 
-    def convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil)
+    def convert(from, to, format:, quality: nil, optimize: true, max_pixels: nil)
       probe = compat_probe(from, backend: :imagemagick, max_pixels: max_pixels)
       output = PathSafety.ensure_safe_output_path!(to).to_s
-      info = ImageMagickBackend.convert_to_jpeg(input: probe.input, output: output, quality: quality)
-      Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: quality) if optimize
+      info = ImageMagickBackend.convert(input: probe.input, output: output, format: format, quality: quality)
+      normalized_format = format.to_s.downcase == "jpeg" ? "jpg" : format.to_s.downcase
+      Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: normalized_format == "jpg" ? quality : nil) if optimize
       result_from_info(probe.input, output, info, "imagemagick")
+    end
+
+    def convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil)
+      convert(from, to, format: "jpg", quality: quality, optimize: optimize, max_pixels: max_pixels)
     end
 
     def fix_orientation(from, to = from, max_pixels: nil)

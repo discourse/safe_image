@@ -23,10 +23,10 @@ Dir.mktmpdir do |dir|
   results << SafeImage.thumbnail(input: JPG, output: im_thumb, width: 600, height: 400, backend: :imagemagick, optimize: true, max_pixels: 100_000_000)
   results << SafeImage.crop(JPG, crop, 400, 400, backend: :imagemagick, max_pixels: 100_000_000)
   results << SafeImage.downsize(PNG, down, "50%", max_pixels: 10_000_000)
-  results << SafeImage.convert_to_jpeg(PNG, conv, quality: 85, max_pixels: 10_000_000)
+  results << SafeImage.convert(PNG, conv, format: "jpg", quality: 85, max_pixels: 10_000_000)
   heic_supported = true
   begin
-    results << SafeImage.convert_to_jpeg(HEIC, heic, quality: 85, max_pixels: 10_000_000)
+    results << SafeImage.convert(HEIC, heic, format: "jpg", quality: 85, max_pixels: 10_000_000)
   rescue SafeImage::Error => e
     heic_supported = false
     warn "SKIP HEIC ImageMagick conversion: #{e.message}"

@@ -222,6 +222,10 @@ module SafeImage
     maybe_sandbox(:downsize, args: args, kwargs: kwargs) { DiscourseCompat.downsize(*args, **kwargs) }
   end
 
+  def convert(*args, **kwargs)
+    maybe_sandbox(:convert, args: args, kwargs: kwargs) { DiscourseCompat.convert(*args, **kwargs) }
+  end
+
   def convert_to_jpeg(*args, **kwargs)
     maybe_sandbox(:convert_to_jpeg, args: args, kwargs: kwargs) { DiscourseCompat.convert_to_jpeg(*args, **kwargs) }
   end

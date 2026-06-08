@@ -60,8 +60,14 @@ Dir.mktmpdir do |dir|
   begin
     txt = File.join(dir, "not-image.txt")
     File.write(txt, "not an image")
-    SafeImage.convert_to_jpeg(txt, File.join(dir, "sniffed.jpg"))
-    abort "convert_to_jpeg unexpectedly allowed decoder-less ImageMagick sniffing"
+    SafeImage.convert(txt, File.join(dir, "sniffed.jpg"), format: "jpg")
+    abort "convert unexpectedly allowed decoder-less ImageMagick sniffing"
+  rescue SafeImage::UnsupportedFormatError
+  end
+
+  begin
+    SafeImage.convert(JPG, File.join(dir, "bad.bmp"), format: "bmp")
+    abort "convert unexpectedly accepted unsupported format"
   rescue SafeImage::UnsupportedFormatError
   end
 

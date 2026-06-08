@@ -36,8 +36,8 @@ Dir.mktmpdir do |dir|
   results << SafeImage.crop(JPG, File.join(dir, "crop-im.jpg"), 400, 400, backend: :imagemagick, optimize: true, max_pixels: 100_000_000)
   results << SafeImage.downsize(PNG, File.join(dir, "down-vips.png"), "50%", backend: :vips, max_pixels: 10_000_000)
   results << SafeImage.downsize(PNG, File.join(dir, "down-im.png"), "50%", backend: :imagemagick, max_pixels: 10_000_000)
-  results << SafeImage.convert_to_jpeg(PNG, File.join(dir, "png.jpg"), quality: 85, max_pixels: 10_000_000)
-  results << SafeImage.convert_to_jpeg(HEIC, File.join(dir, "heic.jpg"), quality: 85, max_pixels: 10_000_000)
+  results << SafeImage.convert(PNG, File.join(dir, "png.jpg"), format: "jpg", quality: 85, max_pixels: 10_000_000)
+  results << SafeImage.convert(HEIC, File.join(dir, "heic.jpg"), format: "jpg", quality: 85, max_pixels: 10_000_000)
   results << SafeImage.fix_orientation(JPG, File.join(dir, "oriented.jpg"), max_pixels: 100_000_000)
   results << SafeImage.convert_favicon_to_png(ICO, File.join(dir, "ico.png"), max_pixels: 10_000_000)
 

@@ -356,14 +356,16 @@ SafeImage.downsize("large.png", "small.png", "400000@", backend: :vips)
 The direct vips backend supports the geometry forms covered by the test suite:
 percentage, bounding box with `>`, and pixel-area cap with `@`.
 
-### `SafeImage.convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil)`
+### `SafeImage.convert(from, to, format:, quality: nil, optimize: true, max_pixels: nil)`
 
-Converts an input image to JPEG through the hardened ImageMagick compatibility
-backend.
+Converts an input image through the hardened ImageMagick compatibility backend.
+The output `format:` is explicit and unsupported formats raise
+`SafeImage::UnsupportedFormatError`.
 
 ```ruby
-SafeImage.convert_to_jpeg("upload.png", "upload.jpg", quality: 85)
-SafeImage.convert_to_jpeg("upload.heic", "upload.jpg", quality: 85)
+SafeImage.convert("upload.png", "upload.jpg", format: "jpg", quality: 85)
+SafeImage.convert("upload.heic", "upload.jpg", format: "jpg", quality: 85)
+SafeImage.convert("upload.jpg", "upload.webp", format: "webp", quality: 85)
 ```
 
 ### `SafeImage.fix_orientation(from, to = from, max_pixels: nil)`
@@ -515,7 +517,8 @@ sandbox worker:
 - `resize`
 - `crop`
 - `downsize`
-- `convert_to_jpeg`
+- `convert`
+- `convert_to_jpeg` compatibility alias
 - `fix_orientation`
 - `convert_favicon_to_png`
 - `frame_count`
