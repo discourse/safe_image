@@ -153,6 +153,59 @@ Supported outputs for the direct libvips backend:
 `execution: :sandbox` is fail-closed: it raises if Landlock is unavailable.
 `execution: :sandbox_if_available` uses the sandbox only when available.
 
+## Local metadata helpers
+
+These helpers are intended to cover the local-file parts of APIs like
+`FastImage.type`, `FastImage.size`, and `FastImage#orientation` without adding a
+Ruby dependency. They do not fetch remote URLs.
+
+### `SafeImage.type(path, max_pixels: nil)`
+
+Returns a FastImage-style symbol for a local file:
+
+```ruby
+SafeImage.type("upload.jpg") # => :jpeg
+SafeImage.type("upload.png") # => :png
+```
+
+JPEG is returned as `:jpeg`, not `:jpg`, to match common Ruby image-probing
+conventions.
+
+### `SafeImage.size(path, max_pixels: nil)` / `SafeImage.dimensions(path, max_pixels: nil)`
+
+Returns `[width, height]` for a local file:
+
+```ruby
+SafeImage.size("upload.jpg")       # => [1600, 1200]
+SafeImage.dimensions("upload.png") # => [800, 600]
+```
+
+### `SafeImage.orientation(path, max_pixels: nil)`
+
+Returns the EXIF orientation integer for a local file, defaulting to `1` when no
+orientation is present or when ImageMagick cannot report it.
+
+```ruby
+SafeImage.orientation("upload.jpg") # => 1
+```
+
+### `SafeImage.info(path, max_pixels: nil, animated: false, orientation: false)`
+
+Returns a `SafeImage::Info` object for a local file:
+
+```ruby
+info = SafeImage.info("upload.jpg", animated: true, orientation: true)
+info.type        # => :jpeg
+info.width       # => 1600
+info.height      # => 1200
+info.size        # => [1600, 1200]
+info.animated    # => false
+info.orientation # => 1
+```
+
+`animated:` and `orientation:` default to `false` because they may require extra
+ImageMagick work. When disabled, those fields are `nil`.
+
 ## Compatibility API
 
 These methods are shaped around the image operations Discourse currently
@@ -345,6 +398,11 @@ After `SafeImage.enable_sandbox!`, every public operation routes through the
 sandbox worker:
 
 - `probe`
+- `type`
+- `size`
+- `dimensions`
+- `info`
+- `orientation`
 - `thumbnail`
 - `optimize`
 - `resize`

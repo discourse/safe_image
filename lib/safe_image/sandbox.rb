@@ -16,7 +16,7 @@ module SafeImage
     }.freeze
 
     OPERATIONS = %w[
-      probe thumbnail optimize resize crop downsize convert_to_jpeg fix_orientation
+      probe thumbnail type size dimensions info orientation optimize resize crop downsize convert_to_jpeg fix_orientation
       convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
       sanitize_svg!
     ].freeze
@@ -60,7 +60,8 @@ module SafeImage
     def public_call!(operation, args:, kwargs:)
       operation = operation.to_s
       raise ArgumentError, "unsupported sandbox operation: #{operation}" unless OPERATIONS.include?(operation)
-      run_worker!(operation, { args: args, kwargs: kwargs })
+      result = run_worker!(operation, { args: args, kwargs: kwargs })
+      operation == "type" && result ? result.to_sym : result
     end
 
     def thumbnail(request)
@@ -101,6 +102,8 @@ module SafeImage
 
         if defined?(SafeImage::Result) && result.is_a?(SafeImage::Result)
           puts JSON.dump({ __type: "Result", data: result.to_h })
+        elsif defined?(SafeImage::Info) && result.is_a?(SafeImage::Info)
+          puts JSON.dump({ __type: "Info", data: result.to_h })
         else
           puts JSON.dump({ __type: "Value", data: result })
         end
@@ -133,6 +136,9 @@ module SafeImage
       if response[:__type] == "Result"
         data = response.fetch(:data)
         Result.new(**data)
+      elsif response[:__type] == "Info"
+        data = response.fetch(:data)
+        Info.new(**data)
       else
         response[:data]
       end

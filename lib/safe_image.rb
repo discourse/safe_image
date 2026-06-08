@@ -66,6 +66,50 @@ module SafeImage
     end
   end
 
+  def type(path, max_pixels: nil)
+    maybe_sandbox(:type, args: [path], kwargs: { max_pixels: max_pixels }) do
+      fastimage_type(probe(path, max_pixels: max_pixels).input_format)
+    end
+  end
+
+  def size(path, max_pixels: nil)
+    maybe_sandbox(:size, args: [path], kwargs: { max_pixels: max_pixels }) do
+      result = probe(path, max_pixels: max_pixels)
+      [result.width, result.height]
+    end
+  end
+
+  def dimensions(path, max_pixels: nil)
+    size(path, max_pixels: max_pixels)
+  end
+
+  def info(path, max_pixels: nil, animated: false, orientation: false)
+    maybe_sandbox(:info, args: [path], kwargs: { max_pixels: max_pixels, animated: animated, orientation: orientation }) do
+      result = probe(path, max_pixels: max_pixels)
+      type = fastimage_type(result.input_format)
+      Info.new(
+        path: result.input,
+        type: type,
+        width: result.width,
+        height: result.height,
+        size: [result.width, result.height],
+        animated: animated ? animated?(path, max_pixels: max_pixels) : nil,
+        orientation: orientation ? orientation(path, max_pixels: max_pixels) : nil
+      )
+    end
+  end
+
+  def orientation(path, max_pixels: nil)
+    maybe_sandbox(:orientation, args: [path], kwargs: { max_pixels: max_pixels }) do
+      probe(path, max_pixels: max_pixels) if max_pixels
+      ImageMagickBackend.orientation(path)
+    end
+  end
+
+  def fastimage_type(format)
+    format.to_s == "jpg" ? :jpeg : format.to_s.to_sym
+  end
+
   def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, max_pixels: nil, backend: :vips, optimize: false, optimize_mode: :lossless, execution: :inline)
     maybe_sandbox(
       :thumbnail,

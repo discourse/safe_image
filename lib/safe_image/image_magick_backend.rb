@@ -126,6 +126,21 @@ module SafeImage
       frames.to_i
     end
 
+    def orientation(path, timeout: Runner::DEFAULT_TIMEOUT)
+      raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
+      path = PathSafety.ensure_imagemagick_safe!(path)
+      ext = File.extname(path).delete_prefix(".").downcase
+      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, = Runner.run!(
+        ["identify", "-ping", "-format", "%[EXIF:Orientation]", "#{decoder}:#{path}[0]"],
+        timeout: timeout
+      )
+      value = stdout.to_s.strip
+      value.empty? ? 1 : value.to_i
+    rescue CommandError
+      1
+    end
+
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize:, font: "NimbusSans-Regular", timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
       output = PathSafety.ensure_imagemagick_safe!(output)

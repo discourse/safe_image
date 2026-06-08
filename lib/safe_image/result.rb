@@ -1,6 +1,16 @@
 # frozen_string_literal: true
 
 module SafeImage
+  Info = Data.define(
+    :path,
+    :type,
+    :width,
+    :height,
+    :size,
+    :animated,
+    :orientation
+  )
+
   Result = Data.define(
     :input,
     :output,

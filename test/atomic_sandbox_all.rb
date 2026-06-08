@@ -22,6 +22,13 @@ Dir.mktmpdir do |dir|
   raise "sandbox not enabled" unless SafeImage.sandbox_enabled?
 
   results = []
+  raise "bad type" unless SafeImage.type(JPG, max_pixels: 100_000_000) == :jpeg
+  raise "bad size" unless SafeImage.size(JPG, max_pixels: 100_000_000) == [8900, 8900]
+  raise "bad dimensions" unless SafeImage.dimensions(PNG, max_pixels: 10_000_000) == [2032, 1312]
+  raise "bad orientation" unless SafeImage.orientation(JPG, max_pixels: 100_000_000).to_i == 1
+  image_info = SafeImage.info(JPG, animated: true, orientation: true, max_pixels: 100_000_000)
+  raise "bad info" unless image_info.width == 8900 && image_info.height == 8900 && image_info.type.to_sym == :jpeg && image_info.animated == false
+
   results << SafeImage.probe(JPG, max_pixels: 100_000_000)
   results << SafeImage.thumbnail(input: JPG, output: File.join(dir, "thumb.jpg"), width: 600, height: 400, optimize: true, max_pixels: 100_000_000)
   results << SafeImage.resize(JPG, File.join(dir, "resize.jpg"), 600, 400, optimize: true, max_pixels: 100_000_000)
