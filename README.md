@@ -28,6 +28,9 @@ Implemented:
   - `convert_to_jpeg`
   - `fix_orientation`
   - `convert_favicon_to_png`
+  - `frame_count`
+  - `animated?`
+  - `letter_avatar`
   - `optimize_image!`
   - `sanitize_svg!`
 - SVG sanitisation via stdlib REXML allowlist
@@ -107,6 +110,9 @@ DiscourseImageProcessing.downsize("in.png", "smaller.png", "50%")
 DiscourseImageProcessing.convert_to_jpeg("in.png", "out.jpg", quality: 85)
 DiscourseImageProcessing.fix_orientation("in.jpg")
 DiscourseImageProcessing.convert_favicon_to_png("favicon.ico", "favicon.png")
+DiscourseImageProcessing.frame_count("maybe-animated.gif")
+DiscourseImageProcessing.animated?("maybe-animated.gif")
+DiscourseImageProcessing.letter_avatar(output: "avatar.png", size: 360, background_rgb: [1, 2, 3], letter: "S")
 DiscourseImageProcessing.optimize_image!("out.jpg")
 DiscourseImageProcessing.optimize_image!("out.png", allow_lossy_png: true)
 DiscourseImageProcessing.sanitize_svg!("icon.svg")

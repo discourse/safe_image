@@ -19,7 +19,8 @@ CASES = [
   [:downsize_pixels_vips, ->(d) { DiscourseImageProcessing.downsize(PNG, File.join(d, "down-pixels.png"), "400000@", backend: :vips, max_pixels: 10_000_000) }, [787, 508, "png"]],
   [:convert_png_jpeg, ->(d) { DiscourseImageProcessing.convert_to_jpeg(PNG, File.join(d, "png.jpg"), quality: 85, max_pixels: 10_000_000) }, [2032, 1312, "jpg"]],
   [:convert_heic_jpeg, ->(d) { DiscourseImageProcessing.convert_to_jpeg(HEIC, File.join(d, "heic.jpg"), quality: 85, max_pixels: 10_000_000) }, [846, 1129, "jpg"]],
-  [:ico_png, ->(d) { DiscourseImageProcessing.convert_favicon_to_png(ICO, File.join(d, "ico.png")) }, [1, 1, "png"]]
+  [:ico_png, ->(d) { DiscourseImageProcessing.convert_favicon_to_png(ICO, File.join(d, "ico.png")) }, [1, 1, "png"]],
+  [:letter_avatar, ->(d) { DiscourseImageProcessing.letter_avatar(output: File.join(d, "letter.png"), size: 360, background_rgb: [1, 2, 3], letter: "S", font: "Adwaita-Sans") }, [360, 360, "png"]]
 ].freeze
 
 Dir.mktmpdir do |dir|

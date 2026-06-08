@@ -52,6 +52,9 @@ module DiscourseImageProcessing
   def convert_to_jpeg(...) = DiscourseCompat.convert_to_jpeg(...)
   def fix_orientation(...) = DiscourseCompat.fix_orientation(...)
   def convert_favicon_to_png(...) = DiscourseCompat.convert_favicon_to_png(...)
+  def frame_count(...) = DiscourseCompat.frame_count(...)
+  def animated?(...) = DiscourseCompat.animated?(...)
+  def letter_avatar(...) = DiscourseCompat.letter_avatar(...)
   def optimize_image!(...) = DiscourseCompat.optimize_image!(...)
   def sanitize_svg!(...) = SvgSanitizer.sanitize!(...)
   def sandbox_available? = Sandbox.available?

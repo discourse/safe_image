@@ -4,6 +4,7 @@ module DiscourseImageProcessing
   module ImageMagickBackend
     module_function
 
+    DEFAULT_PROFILE = File.expand_path("RT_sRGB.icm", __dir__)
     DECODERS = {
       "jpg" => "jpeg",
       "jpeg" => "jpeg",
@@ -33,17 +34,22 @@ module DiscourseImageProcessing
           "-gravity", "north",
           "-background", "transparent",
           "-thumbnail", "#{Integer(width)}x#{Integer(height)}^",
-          "-crop", "#{Integer(width)}x#{Integer(height)}+0+0"
+          "-crop", "#{Integer(width)}x#{Integer(height)}+0+0",
+          "-unsharp", "2x0.5+0.7+0",
+          "-interlace", "none"
         ])
       else
         argv.concat([
           "-gravity", "center",
           "-background", "transparent",
           "-thumbnail", "#{Integer(width)}x#{Integer(height)}^",
-          "-extent", "#{Integer(width)}x#{Integer(height)}"
+          "-extent", "#{Integer(width)}x#{Integer(height)}",
+          "-interpolate", "catrom",
+          "-unsharp", "2x0.5+0.7+0",
+          "-interlace", "none"
         ])
       end
-      argv.concat(["-interpolate", "catrom", "-unsharp", "2x0.5+0.7+0", "-interlace", "none"])
+      argv.concat(["-profile", DEFAULT_PROFILE]) if File.file?(DEFAULT_PROFILE)
       argv.concat(["-quality", Integer(quality).to_s]) if quality
       argv << output
 
@@ -64,8 +70,9 @@ module DiscourseImageProcessing
         "-background", "transparent",
         "-interlace", "none",
         "-resize", dimensions.to_s,
-        output
       ]
+      argv.concat(["-profile", DEFAULT_PROFILE]) if File.file?(DEFAULT_PROFILE)
+      argv << output
       run_image_command(argv, output, ext, format, timeout)
     end
 
@@ -88,6 +95,33 @@ module DiscourseImageProcessing
       output = PathSafety.ensure_imagemagick_safe!(output)
       argv = ["magick", "ico:#{input}[-1]", "-auto-orient", "-background", "transparent", output]
       run_image_command(argv, output, "ico", "png", timeout)
+    end
+
+    def frame_count(path, timeout: Runner::DEFAULT_TIMEOUT)
+      raise UnsupportedFormatError, "ImageMagick not available" unless Runner.available?("identify")
+      path = PathSafety.ensure_imagemagick_safe!(path)
+      stdout, = Runner.run!(["identify", "-ping", "-format", "%n\n", path], timeout: timeout)
+      stdout.each_line.first.to_i
+    end
+
+    def letter_avatar(output:, size:, background_rgb:, letter:, pointsize:, font: "NimbusSans-Regular", timeout: Runner::DEFAULT_TIMEOUT)
+      raise UnsupportedFormatError, "ImageMagick not available" unless Runner.available?("magick")
+      output = PathSafety.ensure_imagemagick_safe!(output)
+      rgb = Array(background_rgb).map { |v| Integer(v) }
+      raise ArgumentError, "background_rgb must have three channels" unless rgb.length == 3
+      argv = [
+        "magick",
+        "-size", "#{Integer(size)}x#{Integer(size)}",
+        "xc:rgb(#{rgb[0]},#{rgb[1]},#{rgb[2]})",
+        "-pointsize", Integer(pointsize).to_s,
+        "-fill", "#FFFFFFCC",
+        "-font", font.to_s,
+        "-gravity", "Center",
+        "-annotate", "-0+34", letter.to_s,
+        "-depth", "8",
+        output
+      ]
+      run_image_command(argv, output, "generated", "png", timeout)
     end
 
     def fix_orientation(input:, output: input, timeout: Runner::DEFAULT_TIMEOUT)

@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.email = ["sam@discourse.org"]
   spec.required_ruby_version = ">= 3.1"
 
-  spec.files = Dir["lib/**/*.rb", "ext/**/*.{c,rb}", "LICENSE", "README.md"]
+  spec.files = Dir["lib/**/*", "ext/**/*.{c,rb}", "LICENSE", "README.md"]
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/discourse_image_processing_native/extconf.rb"]
 
