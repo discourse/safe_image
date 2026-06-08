@@ -54,6 +54,7 @@ Optional command dependencies:
 - `jpegoptim` for JPEG optimisation
 - `oxipng` for PNG lossless optimisation
 - `pngquant` for optional lossy PNG optimisation
+- `cjpegli` for optional Jpegli JPEG encoding of generated JPEGs
 
 Ruby runtime dependency:
 
@@ -65,6 +66,12 @@ Optional Ruby dependency:
 
 `landlock` is intentionally **not** a gem dependency. Install it in the host
 application if you want sandboxing.
+
+`cjpegli` is also intentionally optional. On Arch it is provided by `libjxl`;
+on macOS it is commonly installed via `brew install jpeg-xl`; Debian/Ubuntu
+package names vary by release (`libjpegli-tools` where available). Safe Image
+detects it at runtime and falls back unless the caller explicitly requests
+`encoder: :cjpegli`.
 
 ```bash
 gem build safe_image.gemspec
@@ -143,7 +150,8 @@ result = SafeImage.thumbnail(
   backend: :vips,           # :vips or :imagemagick
   optimize: true,
   optimize_mode: :lossless, # :lossless or :lossy for PNG optimisation
-  execution: :inline        # :inline, :sandbox, :sandbox_if_available
+  execution: :inline,       # :inline, :sandbox, :sandbox_if_available
+  encoder: :auto            # :auto, :cjpegli, :vips, :imagemagick for JPEG output
 )
 ```
 
@@ -156,6 +164,16 @@ Supported outputs for the direct libvips backend:
 
 `execution: :sandbox` is fail-closed: it raises if Landlock is unavailable.
 `execution: :sandbox_if_available` uses the sandbox only when available.
+
+For JPEG output with the direct libvips backend, `encoder: :auto` uses `cjpegli`
+when it is installed, by rendering the transformed image to a temporary PNG and
+then encoding the final JPEG through Jpegli. If `cjpegli` is missing, `:auto`
+falls back to the normal libvips JPEG writer. Use `encoder: :cjpegli` to require
+Jpegli and fail closed, or `encoder: :vips` / `:imagemagick` to force the legacy
+encoder path.
+
+`chroma_subsampling: :auto` uses `4:4:4` for PNG-sourced JPEG conversion and
+`4:2:0` otherwise. Pass `"420"`, `"422"`, or `"444"` to force a value.
 
 ## Local metadata helpers
 
@@ -319,7 +337,7 @@ These methods are shaped around the image operations Discourse currently
 performs. They are useful outside Discourse too, but the names are deliberately
 boring because they map to common upload-pipeline tasks.
 
-### `SafeImage.resize(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil)`
+### `SafeImage.resize(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil, encoder: :auto)`
 
 Creates a resized thumbnail-style output.
 
@@ -333,7 +351,7 @@ Backends:
 - `:imagemagick` default compatibility path
 - `:vips` direct libvips path
 
-### `SafeImage.crop(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil)`
+### `SafeImage.crop(from, to, width, height, quality: nil, backend: :imagemagick, optimize: true, max_pixels: nil, encoder: :auto)`
 
 Creates a north-cropped image. This matches the avatar/optimized-image crop
 shape used by Discourse.
@@ -343,7 +361,7 @@ SafeImage.crop("upload.jpg", "avatar.jpg", 240, 240)
 SafeImage.crop("upload.jpg", "avatar.jpg", 240, 240, backend: :vips)
 ```
 
-### `SafeImage.downsize(from, to, dimensions, backend: :imagemagick, optimize: true, max_pixels: nil, quality: 85)`
+### `SafeImage.downsize(from, to, dimensions, backend: :imagemagick, optimize: true, max_pixels: nil, quality: 85, encoder: :auto)`
 
 Downsizes an image using ImageMagick-style geometry strings.
 
@@ -356,11 +374,16 @@ SafeImage.downsize("large.png", "small.png", "400000@", backend: :vips)
 The direct vips backend supports the geometry forms covered by the test suite:
 percentage, bounding box with `>`, and pixel-area cap with `@`.
 
-### `SafeImage.convert(from, to, format:, quality: nil, optimize: true, max_pixels: nil)`
+### `SafeImage.convert(from, to, format:, quality: nil, optimize: true, max_pixels: nil, encoder: :auto)`
 
-Converts an input image through the hardened ImageMagick compatibility backend.
-The output `format:` is explicit and unsupported formats raise
-`SafeImage::UnsupportedFormatError`.
+Converts an input image to an explicit output `format:`. Unsupported formats
+raise `SafeImage::UnsupportedFormatError`.
+
+For JPEG output, `encoder: :auto` uses `cjpegli` when it is installed and the
+input can be encoded directly by Jpegli. Today that direct path is intentionally
+limited to PNG input; other formats fall back to the hardened ImageMagick
+compatibility backend. Use `encoder: :cjpegli` to require Jpegli and fail closed,
+or `encoder: :imagemagick` to force the compatibility path.
 
 ```ruby
 SafeImage.convert("upload.png", "upload.jpg", format: "jpg", quality: 85)

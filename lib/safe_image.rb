@@ -20,6 +20,7 @@ require_relative "safe_image/svg_metadata"
 require_relative "safe_image/svg_sanitizer"
 require_relative "safe_image/remote"
 require_relative "safe_image/image_magick_backend"
+require_relative "safe_image/jpegli_backend"
 require_relative "safe_image/vips_backend"
 require_relative "safe_image/processor"
 require_relative "safe_image/discourse_compat"
@@ -174,7 +175,7 @@ module SafeImage
     Remote.fetch(url, **kwargs, &block)
   end
 
-  def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, max_pixels: nil, backend: :vips, optimize: false, optimize_mode: :lossless, execution: :inline)
+  def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, max_pixels: nil, backend: :vips, optimize: false, optimize_mode: :lossless, execution: :inline, encoder: :auto, chroma_subsampling: :auto)
     maybe_sandbox(
       :thumbnail,
       kwargs: {
@@ -188,10 +189,12 @@ module SafeImage
         backend: backend,
         optimize: optimize,
         optimize_mode: optimize_mode,
-        execution: :inline
+        execution: :inline,
+        encoder: encoder,
+        chroma_subsampling: chroma_subsampling
       }
     ) do
-      Processor.new(max_pixels: max_pixels, backend: backend, execution: execution).thumbnail(
+      Processor.new(max_pixels: max_pixels, backend: backend, execution: execution, encoder: encoder, chroma_subsampling: chroma_subsampling).thumbnail(
         input: input,
         output: output,
         width: width,

@@ -2,16 +2,19 @@
 
 require "fileutils"
 require "pathname"
+require "tempfile"
 
 module SafeImage
   class Processor
     SUPPORTED_INPUTS = %w[jpg jpeg png webp heic heif avif].freeze
     SUPPORTED_OUTPUTS = %w[jpg jpeg png webp avif].freeze
 
-    def initialize(max_pixels: nil, backend: :vips, execution: :inline)
+    def initialize(max_pixels: nil, backend: :vips, execution: :inline, encoder: :auto, chroma_subsampling: :auto)
       @max_pixels = max_pixels
       @backend = backend.to_sym
       @execution = execution.to_sym
+      @encoder = encoder.to_sym
+      @chroma_subsampling = chroma_subsampling
     end
 
     def probe(path)
@@ -82,22 +85,26 @@ module SafeImage
 
       output.dirname.mkpath
       info =
-        case @backend
-        when :vips
-          Native.thumbnail(input.to_s, output.to_s, width, height, out_format, quality, @max_pixels)
-        when :imagemagick, :magick
-          probe_info = Native.probe(input.to_s)
-          validate_pixels!(probe_info.fetch(:width), probe_info.fetch(:height))
-          ImageMagickBackend.thumbnail(
-            input: input.to_s,
-            output: output.to_s,
-            width: width,
-            height: height,
-            format: out_format,
-            quality: quality
-          )
+        if out_format == "jpg" && use_jpegli_for_generated_jpeg?(input)
+          jpegli_thumbnail(input: input, output: output, width: width, height: height, quality: quality, source_format: input.extname.delete_prefix(".").downcase)
         else
-          raise ArgumentError, "unknown backend: #{@backend.inspect}"
+          case @backend
+          when :vips
+            Native.thumbnail(input.to_s, output.to_s, width, height, out_format, quality, @max_pixels)
+          when :imagemagick, :magick
+            probe_info = Native.probe(input.to_s)
+            validate_pixels!(probe_info.fetch(:width), probe_info.fetch(:height))
+            ImageMagickBackend.thumbnail(
+              input: input.to_s,
+              output: output.to_s,
+              width: width,
+              height: height,
+              format: out_format,
+              quality: quality
+            )
+          else
+            raise ArgumentError, "unknown backend: #{@backend.inspect}"
+          end
         end
 
       opt_info = nil
@@ -113,13 +120,60 @@ module SafeImage
         width: info.fetch(:width),
         height: info.fetch(:height),
         filesize: File.size(output),
-        backend: @backend == :vips ? "libvips-direct" : "imagemagick",
+        backend: result_backend(info),
         duration_ms: info.fetch(:duration_ms),
         optimizer: opt_info&.fetch(:tools, nil)
       )
     end
 
     private
+
+    def use_jpegli_for_generated_jpeg?(input)
+      case @encoder
+      when :auto
+        @backend == :vips && JpegliBackend.available?
+      when :cjpegli
+        true
+      when :vips, :imagemagick, :magick
+        false
+      else
+        raise ArgumentError, "unknown encoder: #{@encoder.inspect}"
+      end
+    end
+
+    def jpegli_thumbnail(input:, output:, width:, height:, quality:, source_format:)
+      raise UnsupportedFormatError, "cjpegli is not installed" unless JpegliBackend.available?
+      raise ArgumentError, "encoder: :cjpegli currently requires backend: :vips" unless @backend == :vips
+
+      output.dirname.mkpath
+      Tempfile.create([output.basename(".*").to_s, ".safe-image.png"], output.dirname.to_s) do |tmp|
+        tmp_path = Pathname.new(tmp.path)
+        tmp.close
+        Native.thumbnail(input.to_s, tmp_path.to_s, width, height, "png", 100, @max_pixels)
+        JpegliBackend.encode(
+          input: tmp_path,
+          output: output,
+          quality: quality,
+          chroma_subsampling: JpegliBackend.validate_chroma_subsampling!(@chroma_subsampling, input_format: normalized_source_format(source_format)),
+          input_format: normalized_source_format(source_format)
+        )
+      ensure
+        FileUtils.rm_f(tmp_path) if defined?(tmp_path) && tmp_path
+      end
+    end
+
+    def normalized_source_format(format)
+      format = format.to_s.downcase
+      format == "jpeg" ? "jpg" : format
+    end
+
+    def result_backend(info)
+      if info[:encoder] == "cjpegli"
+        "#{@backend == :vips ? "libvips-direct" : "imagemagick"}+cjpegli"
+      else
+        @backend == :vips ? "libvips-direct" : "imagemagick"
+      end
+    end
 
     def safe_existing_file!(path)
       path = PathSafety.ensure_regular_file!(path)
