@@ -1,26 +1,101 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        ruby:
+          - "3.3"
+          - "3.4"
+          - "4.0"
+
     steps:
       - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
+
+      - name: Cache oxipng
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/oxipng
+          key: oxipng-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libvips-dev imagemagick jpegoptim pngquant
-          if ! command -v oxipng >/dev/null; then
+          # cjpegli is optional; its tests skip when it is missing.
+          sudo apt-get install -y libjxl-tools || true
+          if [ ! -f "$HOME/.cargo/bin/oxipng" ]; then
             cargo install oxipng --locked
-            sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
           fi
+          sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
           command -v convert identify jpegoptim oxipng pngquant
-      - name: Run tests
-        run: bundle exec rake
+
+      - name: Lint
+        run: bundle exec rubocop
+
+      - name: Tests
+        run: bundle exec rake test
+
+  arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Cache oxipng
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/oxipng
+          key: oxipng-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvips-dev imagemagick jpegoptim pngquant
+          # cjpegli is optional; its tests skip when it is missing.
+          sudo apt-get install -y libjxl-tools || true
+          if [ ! -f "$HOME/.cargo/bin/oxipng" ]; then
+            cargo install oxipng --locked
+          fi
+          sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
+          command -v convert identify jpegoptim oxipng pngquant
+
+      - name: Tests
+        run: bundle exec rake test
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - build
+      - arm64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release Gem
+        uses: discourse/publish-rubygems-action@v3
+        env:
+          RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+          GIT_EMAIL: team@discourse.org
+          GIT_NAME: discoursebot

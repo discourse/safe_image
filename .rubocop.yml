@@ -1,0 +1,7 @@
+inherit_gem:
+  rubocop-discourse: default.yml
+
+# The suggested Enumerable#exclude? comes from ActiveSupport, which this gem
+# does not depend on.
+Style/InvertibleUnlessCondition:
+  Enabled: false

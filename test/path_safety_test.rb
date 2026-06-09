@@ -36,7 +36,7 @@ module SafeImage
     # Relative input paths are expanded to absolute before processing, so the
     # ImageMagick-backed helpers accept them just like the rest of the API.
     def test_accepts_relative_input_paths
-      Dir.chdir(FIXTURES) do
+      Dir.chdir(FIXTURES) do # rubocop:disable Discourse/NoChdir -- relative paths are the behaviour under test
         assert_kind_of Integer, SafeImage.orientation("huge.jpg")
         assert_kind_of Integer, SafeImage.frame_count("huge.jpg", max_pixels: JPG_PIXELS)
         refute SafeImage.animated?("huge.jpg", max_pixels: JPG_PIXELS)

@@ -164,7 +164,7 @@ module SafeImage
       return false if encoder == :imagemagick
       raise ArgumentError, "unknown encoder: #{encoder.inspect}" unless %i[auto cjpegli].include?(encoder)
       return true if encoder == :cjpegli && JpegliBackend.suitable_direct_input?(input)
-      return encoder == :auto && JpegliBackend.available? && JpegliBackend.suitable_direct_input?(input)
+      encoder == :auto && JpegliBackend.available? && JpegliBackend.suitable_direct_input?(input)
     end
 
     def use_jpegli_for_generated_jpeg?(format, backend, encoder)
@@ -174,7 +174,7 @@ module SafeImage
       return false if %i[vips imagemagick magick].include?(encoder)
       raise ArgumentError, "unknown encoder: #{encoder.inspect}" unless %i[auto cjpegli].include?(encoder)
       raise ArgumentError, "encoder: :cjpegli currently requires backend: :vips" if encoder == :cjpegli && backend.to_sym != :vips
-      return encoder == :cjpegli || (backend.to_sym == :vips && JpegliBackend.available?)
+      encoder == :cjpegli || (backend.to_sym == :vips && JpegliBackend.available?)
     end
 
     def with_temp_png(output)

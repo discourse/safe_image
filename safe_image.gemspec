@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "lib/safe_image/version"
+
 Gem::Specification.new do |spec|
   spec.name = "safe_image"
-  spec.version = File.read(File.expand_path("lib/safe_image/version.rb", __dir__)).match(/VERSION = "([^"]+)"/)[1]
+  spec.version = SafeImage::VERSION
   spec.summary = "Hardened image processing boundary for untrusted uploads"
   spec.description = "Safe Image is a small Ruby image-processing boundary for untrusted uploads: direct libvips thumbnails/probing, hardened ImageMagick compatibility operations, optimisation, SVG sanitising, and optional atomic Landlock sandbox execution."
   spec.homepage = "https://github.com/sam-saffron-jarvis/safe-image"
@@ -11,13 +13,29 @@ Gem::Specification.new do |spec|
   spec.email = ["sam@discourse.org"]
   spec.required_ruby_version = ">= 3.1"
 
-  spec.files = Dir["lib/**/*", "ext/**/*.{c,rb}", "LICENSE", "README.md", "SECURITY.md"]
+  # Explicit allowlist: lib/ also holds the compiled extension (*.so) after a
+  # local build, which must never ship in the source gem.
+  spec.files = Dir[
+    "lib/**/*.rb",
+    "lib/safe_image/RT_sRGB.icm",
+    "lib/safe_image/imagemagick_policy/policy.xml",
+    "ext/**/*.{c,rb}",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ]
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/safe_image_native/extconf.rb"]
 
   spec.add_runtime_dependency "rexml", "~> 3.4"
 
+  spec.add_development_dependency "minitest", "~> 5.25"
+  spec.add_development_dependency "rake", "~> 13.0"
+  spec.add_development_dependency "rake-compiler", "~> 1.2"
+  spec.add_development_dependency "rubocop-discourse", "~> 3.18"
+
   spec.metadata = {
+    "homepage_uri" => spec.homepage,
     "source_code_uri" => spec.homepage,
     "rubygems_mfa_required" => "true"
   }

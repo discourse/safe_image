@@ -658,21 +658,19 @@ sandbox sweep over the full public operation list.
 
 ```bash
 bundle install
-bundle exec rake
+bundle exec rake          # compile the native extension and run the tests
+bundle exec rubocop       # lint
 ```
 
-`bundle exec rake` builds the native extension and runs:
+The minitest suite lives in `test/*_test.rb`; individual files run standalone
+(`bundle exec ruby test/operations_test.rb`). Tests that depend on optional
+host support — cjpegli, HEIC delegates, the Landlock sandbox — skip with an
+explanation when that support is missing.
 
-- smoke tests
-- compatibility smoke tests
-- golden operation tests
-- ImageMagick parity tests
-- ImageMagick safety-policy tests
-- cjpegli integration tests
-- atomic Landlock all-operation tests when Landlock is available
-
-The atomic sandbox suite skips when `landlock` is not installed or unavailable on
-the host kernel.
+Gem packaging uses the standard Bundler tasks (`rake build`, `rake install`).
+Releases follow the Discourse gem publication flow: bump
+`SafeImage::VERSION`, merge to `main`, and CI publishes the gem to
+RubyGems once the test matrix is green.
 
 ## Security reporting
 
