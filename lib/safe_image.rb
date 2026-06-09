@@ -8,6 +8,12 @@ module SafeImage
   class UnsafePathError < Error; end
   class InvalidImageError < Error; end
   class LimitError < Error; end
+
+  # Default decompression-bomb ceiling for the libvips processing path when the
+  # caller does not pass an explicit max_pixels. Mirrored in the native
+  # extension (SAFE_IMAGE_DEFAULT_MAX_PIXELS) and aligned with the 128MP area
+  # limit on the ImageMagick path. Pass max_pixels to raise or lower it.
+  DEFAULT_MAX_PIXELS = 128 * 1024 * 1024
 end
 
 require_relative "safe_image/native"

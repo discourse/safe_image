@@ -12,6 +12,12 @@ static VALUE eUnsupported;
 static VALUE eInvalid;
 static VALUE eLimit;
 
+/* Default decompression-bomb ceiling applied when the caller does not pass an
+ * explicit max_pixels. Mirrors SafeImage::DEFAULT_MAX_PIXELS and the 128MP area
+ * limit used on the ImageMagick path, so the libvips fast path is not unbounded
+ * by default. Callers that legitimately need larger images pass max_pixels. */
+#define SAFE_IMAGE_DEFAULT_MAX_PIXELS (128LL * 1024 * 1024)
+
 static double now_ms(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -117,9 +123,13 @@ static void validate_scale_or_raise(double scale) {
 }
 
 static int pixels_exceed_limit(VipsImage *image, VALUE max_pixels_val, long long *pixels_out, long long *max_out) {
-  if (NIL_P(max_pixels_val)) return 0;
-  long long max_pixels = NUM2LL(max_pixels_val);
-  if (max_pixels <= 0) rb_raise(rb_eArgError, "max_pixels must be positive");
+  long long max_pixels;
+  if (NIL_P(max_pixels_val)) {
+    max_pixels = SAFE_IMAGE_DEFAULT_MAX_PIXELS;
+  } else {
+    max_pixels = NUM2LL(max_pixels_val);
+    if (max_pixels <= 0) rb_raise(rb_eArgError, "max_pixels must be positive");
+  }
   if (image->Xsize <= 0 || image->Ysize <= 0) rb_raise(eInvalid, "image dimensions are invalid");
   long long pixels = (long long)image->Xsize * (long long)image->Ysize;
   if (pixels_out) *pixels_out = pixels;
@@ -188,37 +198,38 @@ static VALUE rb_thumbnail(VALUE self, VALUE input_val, VALUE output_val, VALUE w
   const char *out_fmt = normalized_format(StringValueCStr(format_val));
   if (!out_fmt || strcmp(out_fmt, "heic") == 0) rb_raise(eUnsupported, "unsupported output format");
 
+  const char *input_path = StringValueCStr(input_val);
   double start = now_ms();
+
+  /* Read the header through an explicit allowlisted loader. This validates the
+   * input format (the loader fails on mismatched bytes) and lets us enforce the
+   * pixel-count limit before any full decode happens. */
   const char *input_fmt = NULL;
-  VipsImage *in = load_explicit(StringValueCStr(input_val), &input_fmt);
+  VipsImage *header = load_explicit(input_path, &input_fmt);
   long long pixels = 0, max_pixels = 0;
-  if (pixels_exceed_limit(in, max_pixels_val, &pixels, &max_pixels)) {
-    g_object_unref(in);
+  if (pixels_exceed_limit(header, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(header);
     raise_pixels_limit(pixels, max_pixels);
   }
+  g_object_unref(header);
 
-  VipsImage *rot = NULL;
-  if (vips_autorot(in, &rot, NULL) != 0) {
-    g_object_unref(in);
-    raise_vips();
-  }
-
+  /* Thumbnail straight from the file so libvips can shrink on load (e.g.
+   * libjpeg DCT downscaling) instead of decoding the source at full
+   * resolution. vips_thumbnail auto-rotates from the orientation tag by
+   * default. ImageMagick loader classes are blocked globally in
+   * init_vips_once, so this still cannot reach an ImageMagick delegate. */
   VipsImage *thumb = NULL;
-  if (vips_thumbnail_image(rot, &thumb, width,
+  if (vips_thumbnail(input_path, &thumb, width,
       "height", height,
       "size", VIPS_SIZE_BOTH,
       "crop", VIPS_INTERESTING_CENTRE,
       "fail_on", VIPS_FAIL_ON_ERROR,
       NULL) != 0) {
-    g_object_unref(rot);
-    g_object_unref(in);
     raise_vips();
   }
 
   if (save_explicit(thumb, StringValueCStr(output_val), out_fmt, quality) != 0) {
     g_object_unref(thumb);
-    g_object_unref(rot);
-    g_object_unref(in);
     raise_vips();
   }
 
@@ -226,8 +237,6 @@ static VALUE rb_thumbnail(VALUE self, VALUE input_val, VALUE output_val, VALUE w
   int out_height = thumb->Ysize;
   double duration_ms = now_ms() - start;
   g_object_unref(thumb);
-  g_object_unref(rot);
-  g_object_unref(in);
 
   VALUE hash = rb_hash_new();
   rb_hash_aset(hash, ID2SYM(rb_intern("input_format")), rb_str_new_cstr(input_fmt));

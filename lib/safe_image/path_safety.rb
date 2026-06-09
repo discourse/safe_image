@@ -52,8 +52,12 @@ module SafeImage
     end
 
     def ensure_imagemagick_input_file!(path)
-      path = Pathname.new(ensure_imagemagick_safe!(path)).expand_path
-      ensure_regular_file!(path).to_s
+      # Expand to an absolute path first so callers may pass relative paths
+      # (matching the rest of the public API), then apply the absolute-path and
+      # safe-character checks to the resolved path.
+      expanded = Pathname.new(local_path(path)).expand_path.to_s
+      ensure_imagemagick_safe!(expanded)
+      ensure_regular_file!(Pathname.new(expanded)).to_s
     end
   end
 end

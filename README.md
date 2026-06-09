@@ -30,7 +30,9 @@ What it does:
 - strips metadata on generated images where applicable
 - rejects symlinked local input/output paths and symlinked path components for
   untrusted file-processing paths
-- enforces optional `max_pixels` guards before expensive work
+- caps decoded pixels before expensive work: the libvips path enforces a
+  default `SafeImage::DEFAULT_MAX_PIXELS` (128MP) ceiling even when no
+  `max_pixels` is given, and callers can raise or lower it per call
 - ships a restrictive ImageMagick `policy.xml`
 - denies Ghostscript-backed formats and dangerous ImageMagick features:
   - `PS`, `PS2`, `PS3`, `EPS`, `EPSF`, `PDF`, `XPS`, `PCL`
@@ -541,7 +543,8 @@ Baseline hardening:
 - libvips cache is disabled by default in-process
 - local untrusted input/output paths reject symlinks and symlinked path components
 - generated images strip metadata where applicable
-- optional `max_pixels` checks fail before expensive work
+- `max_pixels` checks fail before expensive work; the libvips path applies a
+  default 128MP ceiling (`SafeImage::DEFAULT_MAX_PIXELS`) when none is supplied
 - remote fetch uses SSRF hardening: scheme/port restrictions, special-use IP
   blocking, DNS pinning, redirect limits, HTTPS-to-HTTP rejection, proxy-env
   bypass prevention, request-header allowlists, content-type/extension agreement,

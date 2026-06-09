@@ -86,7 +86,19 @@ module SafeImage
           end
         end
 
-        status = wait_thr.value
+        # The read loop above exits as soon as both pipes hit EOF, which can
+        # happen while the child is still alive (it closed/redirected its
+        # standard streams but keeps running, possibly via a grandchild).
+        # Bound the final wait against the same deadline so the timeout is a
+        # hard ceiling rather than something a child can close its way out of.
+        until status
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          if remaining <= 0
+            kill_process_group(wait_thr.pid)
+            raise CommandError.new("command timed out after #{timeout}s", command: argv, stdout: stdout, stderr: stderr)
+          end
+          status = wait_thr.join(remaining)&.value
+        end
       rescue CommandError
         raise
       rescue Exception

@@ -13,21 +13,10 @@ module SafeImage
     def downsize(input:, output:, dimensions:, format:, quality: 85, max_pixels: nil)
       probe = SafeImage.probe(input, max_pixels: max_pixels)
       scale = scale_for(probe.width, probe.height, dimensions)
+      # Never upscale, but always re-encode through the native saver — even on a
+      # no-op scale of 1.0 — so the output is metadata-stripped rather than a
+      # verbatim copy of the untrusted input bytes.
       scale = [scale, 1.0].min
-      if scale >= 1.0
-        if normalized_format(probe.input_format) == normalized_format(format)
-          FileUtils.cp(input, output)
-          return {
-            input_format: probe.input_format,
-            output_format: normalized_format(format),
-            width: probe.width,
-            height: probe.height,
-            duration_ms: 0.0
-          }
-        end
-
-        return Native.resize(input.to_s, output.to_s, 1.0, normalized_format(format), Integer(quality), max_pixels)
-      end
       Native.resize(input.to_s, output.to_s, scale, normalized_format(format), Integer(quality), max_pixels)
     end
 

@@ -1,10 +1,28 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "zlib"
 require_relative "../lib/safe_image"
 
 FIXTURES = File.expand_path("fixtures/images", __dir__)
 JPG = File.join(FIXTURES, "huge.jpg")
+
+def png_chunk(type, data)
+  [data.bytesize].pack("N") + type + data + [Zlib.crc32(type + data)].pack("N")
+end
+
+# A valid solid-grayscale PNG of arbitrary dimensions. All-zero scanlines
+# compress to almost nothing, so this is a tiny file whose IHDR advertises a
+# large pixel count — exactly what a decompression bomb looks like.
+def solid_png(path, width, height)
+  ihdr = [width, height].pack("NN") + [8, 0, 0, 0, 0].pack("C5")
+  deflate = Zlib::Deflate.new
+  row = "\x00".b * (width + 1)
+  idat = +"".b
+  height.times { idat << deflate.deflate(row) }
+  idat << deflate.finish
+  File.binwrite(path, "\x89PNG\r\n\x1a\n".b + png_chunk("IHDR", ihdr) + png_chunk("IDAT", idat) + png_chunk("IEND", ""))
+end
 
 Dir.mktmpdir do |dir|
   ps = File.join(dir, "ghostscript.ps")
@@ -99,6 +117,41 @@ Dir.mktmpdir do |dir|
 
   puts "OK native argument validation"
 end
+
+# The libvips path caps decoded pixels even when the caller passes no
+# max_pixels, so a decompression bomb is rejected by default. Callers that
+# legitimately need larger images opt in with an explicit max_pixels.
+Dir.mktmpdir do |dir|
+  bomb = File.join(dir, "bomb.png") # 12000x12000 = 144MP, above the 128MP default
+  solid_png(bomb, 12_000, 12_000)
+
+  begin
+    SafeImage.thumbnail(input: bomb, output: File.join(dir, "thumb.png"), width: 32, height: 32, optimize: false)
+    abort "libvips path processed a 144MP source without max_pixels"
+  rescue SafeImage::LimitError
+  end
+
+  result = SafeImage.thumbnail(input: bomb, output: File.join(dir, "ok.png"), width: 32, height: 32, optimize: false, max_pixels: 200_000_000)
+  abort "explicit max_pixels override was not honored" unless result.width == 32 && result.height == 32
+end
+
+puts "OK libvips enforces a default pixel cap"
+
+# The subprocess timeout is a hard ceiling: a child that closes its standard
+# streams but keeps running must still be killed at the deadline.
+Dir.mktmpdir do
+  started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  begin
+    SafeImage::Runner.run!(["sh", "-c", "exec >/dev/null 2>&1; sleep 10"], timeout: 1)
+    abort "Runner did not enforce the command timeout"
+  rescue SafeImage::CommandError => e
+    abort "Runner timeout raised the wrong error: #{e.message}" unless e.message.include?("timed out")
+  end
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+  abort "Runner timeout not enforced (#{elapsed.round(1)}s for a 1s limit)" if elapsed > 5
+end
+
+puts "OK Runner enforces command timeout"
 
 begin
   original = SafeImage::Sandbox.method(:available?)

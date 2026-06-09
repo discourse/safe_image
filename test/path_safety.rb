@@ -41,3 +41,13 @@ Dir.mktmpdir do |dir|
 end
 
 puts "OK symlink path safety"
+
+# Relative input paths are expanded to absolute before processing, so the
+# ImageMagick-backed helpers accept them just like the rest of the public API.
+Dir.chdir(FIXTURES) do
+  abort "orientation rejected a relative path" unless SafeImage.orientation("huge.jpg").is_a?(Integer)
+  abort "frame_count rejected a relative path" unless SafeImage.frame_count("huge.jpg", max_pixels: 100_000_000).is_a?(Integer)
+  abort "animated? rejected a relative path" unless SafeImage.animated?("huge.jpg", max_pixels: 100_000_000) == false
+end
+
+puts "OK relative path inputs"
