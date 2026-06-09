@@ -1,0 +1,128 @@
+# frozen_string_literal: true
+
+require "fileutils"
+require_relative "test_helper"
+
+module SafeImage
+  # Runs the whole public API with the Landlock sandbox enabled to prove
+  # every operation works through atomic sandboxed child processes. Sandbox
+  # results cross a process boundary, so hashes may come back with string
+  # keys where the inline path uses symbols.
+  class SandboxIntegrationTest < TestCase
+    def setup
+      super
+      skip "Landlock::SafeExec unavailable" unless SafeImage.sandbox_available?
+      SafeImage.enable_sandbox!
+    end
+
+    def teardown
+      SafeImage.disable_sandbox!
+      super
+    end
+
+    def test_sandbox_reports_enabled
+      assert_predicate SafeImage, :sandbox_enabled?
+    end
+
+    def test_metadata_helpers
+      assert_equal :jpeg, SafeImage.type(JPG, max_pixels: JPG_PIXELS)
+      assert_equal [8900, 8900], SafeImage.size(JPG, max_pixels: JPG_PIXELS)
+      assert_equal [2032, 1312], SafeImage.dimensions(PNG, max_pixels: PNG_PIXELS)
+      assert_equal 1, SafeImage.orientation(JPG, max_pixels: JPG_PIXELS).to_i
+
+      info = SafeImage.info(JPG, animated: true, orientation: true, max_pixels: JPG_PIXELS)
+      assert_equal [8900, 8900], [info.width, info.height]
+      assert_equal :jpeg, info.type.to_sym
+      assert_equal false, info.animated
+    end
+
+    def test_probe
+      probe = SafeImage.probe(JPG, max_pixels: JPG_PIXELS)
+      assert_equal [8900, 8900], [probe.width, probe.height]
+    end
+
+    def test_thumbnail_and_resize
+      thumb = SafeImage.thumbnail(input: JPG, output: tmp_path("thumb.jpg"), width: 600, height: 400, optimize: true, max_pixels: JPG_PIXELS)
+      assert_result thumb, width: 600, height: 400
+
+      resized = SafeImage.resize(JPG, tmp_path("resize.jpg"), 600, 400, optimize: true, max_pixels: JPG_PIXELS)
+      assert_result resized, width: 600, height: 400
+    end
+
+    def test_crop_with_both_backends
+      vips = SafeImage.crop(JPG, tmp_path("crop-vips.jpg"), 400, 400, backend: :vips, optimize: true, max_pixels: JPG_PIXELS)
+      assert_result vips, width: 400, height: 400
+
+      im = SafeImage.crop(JPG, tmp_path("crop-im.jpg"), 400, 400, backend: :imagemagick, optimize: true, max_pixels: JPG_PIXELS)
+      assert_result im, width: 400, height: 400
+    end
+
+    def test_downsize_with_both_backends
+      vips = SafeImage.downsize(PNG, tmp_path("down-vips.png"), "50%", backend: :vips, max_pixels: PNG_PIXELS)
+      assert_result vips, width: 1016, height: 656
+
+      im = SafeImage.downsize(PNG, tmp_path("down-im.png"), "50%", backend: :imagemagick, max_pixels: PNG_PIXELS)
+      assert_result im, width: 1016, height: 656
+    end
+
+    def test_convert
+      png = SafeImage.convert(PNG, tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      assert_result png, width: 2032, height: 1312
+
+      heic = heic_or_skip do
+        SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      end
+      assert_result heic, width: 846, height: 1129
+    end
+
+    def test_fix_orientation
+      result = SafeImage.fix_orientation(JPG, tmp_path("oriented.jpg"), max_pixels: JPG_PIXELS)
+      assert_file_written result.output if result.respond_to?(:output) && result.output
+    end
+
+    def test_convert_favicon_to_png
+      result = SafeImage.convert_favicon_to_png(ICO, tmp_path("ico.png"), max_pixels: PNG_PIXELS)
+      assert_result result, width: 1, height: 1
+    end
+
+    def test_letter_avatar
+      result = SafeImage.letter_avatar(output: tmp_path("letter.png"), size: 360, background_rgb: [1, 2, 3], letter: "S", font: "Adwaita-Sans")
+      assert_result result, width: 360, height: 360
+    end
+
+    def test_animation_helpers
+      frame_count = SafeImage.frame_count(GIF, max_pixels: PNG_PIXELS)
+      assert_operator frame_count, :>, 1
+      assert SafeImage.animated?(GIF, max_pixels: PNG_PIXELS)
+    end
+
+    def test_thumbnail_of_animated_webp
+      result = SafeImage.thumbnail(input: WEBP, output: tmp_path("webp.jpg"), width: 120, height: 120, max_pixels: PNG_PIXELS)
+      assert_result result, width: 120, height: 120
+    end
+
+    def test_sanitize_svg
+      svg = write_tmp("bad.svg", %q{<svg onload="x"><script>x</script><rect width="1" height="1" onclick="x"/></svg>})
+
+      result = SafeImage.sanitize_svg!(svg)
+      assert result["sanitized"] || result[:sanitized], "sanitize_svg! did not report sanitizing"
+      refute_match(/script|onload|onclick/, File.read(svg), "svg still unsafe")
+    end
+
+    def test_optimize
+      jpg = tmp_path("opt.jpg")
+      FileUtils.cp(JPG, jpg)
+
+      result = SafeImage.optimize(jpg, strict: true)
+      assert_includes result.fetch("tools") { result.fetch(:tools) }, "jpegoptim"
+    end
+
+    def test_optimize_image!
+      jpg = tmp_path("opt-bang.jpg")
+      FileUtils.cp(JPG, jpg)
+
+      result = SafeImage.optimize_image!(jpg, strict: true)
+      assert_includes result.fetch("tools") { result.fetch(:tools) }, "jpegoptim"
+    end
+  end
+end

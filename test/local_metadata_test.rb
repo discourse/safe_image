@@ -1,0 +1,35 @@
+# frozen_string_literal: true
+
+require_relative "test_helper"
+
+module SafeImage
+  class LocalMetadataTest < TestCase
+    def test_type_sniffs_content
+      assert_equal :jpeg, SafeImage.type(JPG)
+      assert_equal :png, SafeImage.type(PNG)
+    end
+
+    def test_size_and_dimensions
+      assert_equal [8900, 8900], SafeImage.size(JPG)
+      assert_equal [2032, 1312], SafeImage.dimensions(PNG)
+    end
+
+    def test_orientation
+      assert_equal 1, SafeImage.orientation(JPG).to_i
+    end
+
+    def test_animated_detection
+      assert SafeImage.animated?(GIF, max_pixels: PNG_PIXELS)
+      assert SafeImage.animated?(WEBP, max_pixels: PNG_PIXELS)
+    end
+
+    def test_info_combines_metadata
+      info = SafeImage.info(JPG, animated: true, orientation: true, max_pixels: JPG_PIXELS)
+
+      assert_equal :jpeg, info.type
+      assert_equal [8900, 8900], info.size
+      assert_equal false, info.animated
+      assert_equal 1, info.orientation.to_i
+    end
+  end
+end

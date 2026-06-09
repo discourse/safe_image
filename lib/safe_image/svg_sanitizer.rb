@@ -81,7 +81,7 @@ module SafeImage
     end
 
     def dangerous_value?(value)
-      normalized = value.to_s.gsub(/[\u0000-\u001f\u007f\s]+/, "")
+      normalized = value.to_s.gsub(/[\u0000-\u0020\u007f]+/, "")
       return true if normalized.match?(/(?:javascript|data):/i)
 
       normalized.scan(/url\(([^)]*)\)/i).any? do |match|

@@ -1,25 +1,17 @@
 # frozen_string_literal: true
 
 require "rake/extensiontask"
+require "rake/testtask"
 
 Rake::ExtensionTask.new("safe_image_native") do |ext|
   ext.lib_dir = "lib"
   ext.ext_dir = "ext/safe_image_native"
 end
 
-task default: [:compile, :test]
-
-task :test => :compile do
-  ruby "-Ilib -I. test/smoke.rb"
-  ruby "-Ilib -I. test/compat_smoke.rb"
-  ruby "-Ilib -I. test/golden_compat.rb"
-  ruby "-Ilib -I. test/imagemagick_parity.rb"
-  ruby "-Ilib -I. test/safety_policy.rb"
-  ruby "-Ilib -I. test/path_safety.rb"
-  ruby "-Ilib -I. test/vips_output_format.rb"
-  ruby "-Ilib -I. test/cjpegli_integration.rb"
-  ruby "-Ilib -I. test/local_metadata.rb"
-  ruby "-Ilib -I. test/svg_metadata.rb"
-  ruby "-Ilib -I. test/remote_metadata.rb"
-  ruby "-Ilib -I. test/atomic_sandbox_all.rb"
+Rake::TestTask.new(:test) do |t|
+  t.libs << "test"
+  t.test_files = FileList["test/**/*_test.rb"]
 end
+
+task test: :compile
+task default: :test
