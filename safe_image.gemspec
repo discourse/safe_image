@@ -22,7 +22,8 @@ Gem::Specification.new do |spec|
     "lib/safe_image/fonts/DEJAVU-LICENSE",
     "LICENSE",
     "README.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "CHANGELOG.md"
   ]
   spec.require_paths = ["lib"]
 
