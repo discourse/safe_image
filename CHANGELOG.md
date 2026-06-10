@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so libvips never streams its input into itself.
 - Garbage EXIF orientation tags clamp to the valid 1–8 range instead of
   leaking raw values.
+- The Landlock sandbox grants read access to Ruby's `libdir`, so workers no
+  longer fail to start under `--enable-shared` Rubies installed outside the
+  default read roots (e.g. GitHub Actions' hostedtoolcache builds). Sandbox
+  failures now include the child's stderr in the error message.
 
 ### Security
 

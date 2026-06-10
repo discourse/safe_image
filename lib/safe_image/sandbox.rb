@@ -50,7 +50,7 @@ module SafeImage
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     rescue Landlock::SafeExec::CommandError => e
       raise CommandError.new(
-        "sandboxed command failed",
+        "sandboxed command failed: #{failure_detail(e)}",
         command: argv,
         status: e.status&.exitstatus,
         stdout: e.stdout,
@@ -161,7 +161,7 @@ module SafeImage
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     rescue Landlock::SafeExec::CommandError => e
       raise CommandError.new(
-        "sandboxed worker failed",
+        "sandboxed worker failed: #{failure_detail(e)}",
         command: [RbConfig.ruby, "-e", "..."],
         status: e.status&.exitstatus,
         stdout: e.stdout,
@@ -221,6 +221,11 @@ module SafeImage
       paths << RbConfig::CONFIG["rubyarchdir"]
       paths << RbConfig::CONFIG["sitearchdir"]
       paths << RbConfig::CONFIG["vendorarchdir"]
+      # An --enable-shared Ruby installed outside the default read roots
+      # (e.g. GitHub Actions' /opt/hostedtoolcache builds) keeps libruby in
+      # libdir; without read access the worker dies at dynamic-link time
+      # before any Ruby code runs.
+      paths << RbConfig::CONFIG["libdir"]
       paths << File.dirname(RbConfig.ruby)
       # Pango/fontconfig need the font directories and configs for the native
       # letter_avatar text rendering inside the worker.
@@ -233,6 +238,15 @@ module SafeImage
 
     def existing_paths(paths)
       paths.flatten.compact.map(&:to_s).reject(&:empty?).select { |path| File.exist?(path) }.uniq
+    end
+
+    # Sandbox failures often happen before the child can run any Ruby (e.g. a
+    # denied shared-library read kills it at dynamic-link time); without the
+    # child's stderr in the message they are undiagnosable from a CI log.
+    def failure_detail(error)
+      detail = error.stderr.to_s.strip
+      detail = "exit status #{error.status&.exitstatus.inspect}" if detail.empty?
+      detail[0, 2000]
     end
 
     def symbolize(hash)
