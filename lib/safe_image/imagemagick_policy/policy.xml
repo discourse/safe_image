@@ -8,6 +8,13 @@
   <policy domain="coder" rights="none" pattern="*" />
   <policy domain="coder" rights="read|write" pattern="{JPEG,JPG,PNG,GIF,WEBP,HEIC,HEIF,AVIF,ICO,ICC,ICM,XC}" />
 
+  <!-- Output-only coders for dominant_color, which writes the histogram
+       colour summary to stdout via histogram-to-info output. Write rights
+       only; neither is a decodable input format. NOTE: ImageMagick parses
+       this file with a hand-rolled tokenizer, not an XML parser; a backtick
+       or apostrophe in a comment silently truncates the policy here. -->
+  <policy domain="coder" rights="write" pattern="{HISTOGRAM,INFO}" />
+
   <!-- Ghostscript-backed / document / vector-ish formats: deny explicitly even
        if a broader system policy is present. -->
   <policy domain="coder" rights="none" pattern="{PS,PS2,PS3,EPS,EPSF,PDF,XPS,PCL,MSL,MVG,HTTPS,HTTP,URL,TEXT,LABEL}" />

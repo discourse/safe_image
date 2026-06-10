@@ -151,6 +151,12 @@ module SafeImage
       end
     end
 
+    def dominant_color(url, max_bytes: DEFAULT_MAX_BYTES, max_redirects: DEFAULT_MAX_REDIRECTS, open_timeout: DEFAULT_OPEN_TIMEOUT, read_timeout: DEFAULT_READ_TIMEOUT, total_timeout: DEFAULT_TOTAL_TIMEOUT, allow_private: false, allowed_ports: DEFAULT_ALLOWED_PORTS, headers: {}, max_pixels: nil)
+      fetch(url, max_bytes: max_bytes, max_redirects: max_redirects, open_timeout: open_timeout, read_timeout: read_timeout, total_timeout: total_timeout, allow_private: allow_private, allowed_ports: allowed_ports, headers: headers) do |path|
+        SafeImage.dominant_color(path, max_pixels: max_pixels)
+      end
+    end
+
     def request(uri, io:, max_bytes:, max_redirects:, open_timeout:, read_timeout:, total_timeout:, started_at:, allow_private:, allowed_ports:, headers: {})
       raise ArgumentError, "too many redirects" if max_redirects < 0
       check_deadline!(started_at, total_timeout)

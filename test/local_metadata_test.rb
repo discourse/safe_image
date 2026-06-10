@@ -23,6 +23,20 @@ module SafeImage
       assert SafeImage.animated?(WEBP, max_pixels: PNG_PIXELS)
     end
 
+    def test_gif_metadata_uses_the_native_loader
+      assert_equal :gif, SafeImage.type(GIF, max_pixels: PNG_PIXELS)
+      assert_equal [320, 320], SafeImage.size(GIF, max_pixels: PNG_PIXELS)
+      assert_equal "libvips-direct", SafeImage.probe(GIF, max_pixels: PNG_PIXELS).backend
+    end
+
+    def test_frame_count
+      assert_equal 20, SafeImage.frame_count(GIF, max_pixels: PNG_PIXELS)
+      assert_equal 67, SafeImage.frame_count(WEBP, max_pixels: PNG_PIXELS)
+      assert_equal 1, SafeImage.frame_count(JPG, max_pixels: JPG_PIXELS)
+      # ico directories are counted by the pure-Ruby parser.
+      assert_equal 1, SafeImage.frame_count(ICO)
+    end
+
     def test_info_combines_metadata
       info = SafeImage.info(JPG, animated: true, orientation: true, max_pixels: JPG_PIXELS)
 

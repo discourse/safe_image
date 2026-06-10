@@ -107,6 +107,11 @@ module SafeImage
       assert SafeImage.remote_animated?(server.url("/animated"), allow_private: true, max_bytes: 1_000_000, max_pixels: PNG_PIXELS)
     end
 
+    def test_remote_dominant_color
+      assert_match(/\A\h{6}\z/,
+        SafeImage.remote_dominant_color(server.url("/photo.png"), allow_private: true, max_bytes: 5_000_000, max_pixels: PNG_PIXELS))
+    end
+
     def test_rejects_non_image_content_type
       assert_raises(UnsupportedFormatError) do
         SafeImage.fetch_remote(server.url("/html-as-jpg.jpg"), allow_private: true, max_bytes: 1_000_000) { |_| }
@@ -131,6 +136,7 @@ module SafeImage
       @server ||= StubImageServer.new(
         "/huge.jpg" => { content_type: "image/jpeg", body: File.binread(JPG) },
         "/animated" => { content_type: "image/gif", body: File.binread(GIF) },
+        "/photo.png" => { content_type: "image/png", body: File.binread(PNG) },
         "/png-as-jpg.jpg" => { content_type: "image/png", body: File.binread(PNG) },
         "/html-as-jpg.jpg" => { content_type: "text/html", body: "<!doctype html><script>alert(1)</script>" },
         "/icon.svg" => { content_type: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="34"></svg>' },

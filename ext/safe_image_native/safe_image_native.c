@@ -41,6 +41,7 @@ static const char *normalized_format(const char *fmt) {
   if (streq_ci(fmt, "jpg") || streq_ci(fmt, "jpeg")) return "jpg";
   if (streq_ci(fmt, "png")) return "png";
   if (streq_ci(fmt, "webp")) return "webp";
+  if (streq_ci(fmt, "gif")) return "gif";
   if (streq_ci(fmt, "heic") || streq_ci(fmt, "heif")) return "heic";
   if (streq_ci(fmt, "avif")) return "avif";
   return NULL;
@@ -95,6 +96,17 @@ static VipsImage *load_explicit(const char *path, const char **fmt_out) {
       NULL);
   } else if (strcmp(fmt, "webp") == 0) {
     rc = vips_webpload(path, &image,
+      "access", VIPS_ACCESS_SEQUENTIAL,
+      "fail_on", VIPS_FAIL_ON_ERROR,
+      NULL);
+  } else if (strcmp(fmt, "gif") == 0) {
+    /* libnsgif-backed loader: ships inside libvips and stays within the
+     * untrusted-input block, unlike the Magick loaders. Loads the first
+     * frame only (the n=1 default), matching the [0] semantics of the
+     * ImageMagick compatibility backend. */
+    if (!vips_type_find("VipsOperation", "gifload"))
+      rb_raise(eUnsupported, "this libvips build has no GIF loader");
+    rc = vips_gifload(path, &image,
       "access", VIPS_ACCESS_SEQUENTIAL,
       "fail_on", VIPS_FAIL_ON_ERROR,
       NULL);
@@ -162,6 +174,14 @@ static int save_explicit(VipsImage *image, const char *path, const char *fmt, in
     return vips_heifsave(image, path,
       "Q", quality,
       "compression", VIPS_FOREIGN_HEIF_COMPRESSION_AV1,
+      "keep", VIPS_FOREIGN_KEEP_NONE,
+      NULL);
+  } else if (strcmp(fmt, "gif") == 0) {
+    /* cgif-backed saver; optional at libvips build time, so probe for it.
+     * GIF output is palette-quantised and has no quality parameter. */
+    if (!vips_type_find("VipsOperation", "gifsave"))
+      rb_raise(eUnsupported, "this libvips build cannot save GIF (cgif support missing)");
+    return vips_gifsave(image, path,
       "keep", VIPS_FOREIGN_KEEP_NONE,
       NULL);
   }
@@ -378,6 +398,162 @@ static VALUE rb_crop_north(VALUE self, VALUE input_val, VALUE output_val, VALUE 
   return hash;
 }
 
+/* Encode a raw RGBA buffer (top-down rows) as PNG. Used by the pure-Ruby ICO
+ * decoder so legacy DIB favicon payloads never touch ImageMagick. */
+static VALUE rb_png_from_rgba(VALUE self, VALUE bytes_val, VALUE width_val, VALUE height_val, VALUE output_val) {
+  Check_Type(bytes_val, T_STRING);
+  Check_Type(output_val, T_STRING);
+  int width = NUM2INT(width_val);
+  int height = NUM2INT(height_val);
+  validate_dimensions_or_raise(width, height);
+  if (width > 4096 || height > 4096) rb_raise(eLimit, "rgba buffer dimensions exceed 4096x4096");
+  long expected = (long)width * (long)height * 4;
+  if (RSTRING_LEN(bytes_val) != expected) rb_raise(rb_eArgError, "rgba buffer must be width*height*4 bytes");
+
+  init_vips_once();
+  VipsImage *image = vips_image_new_from_memory_copy(RSTRING_PTR(bytes_val), (size_t)expected, width, height, 4, VIPS_FORMAT_UCHAR);
+  if (image == NULL) raise_vips();
+  image->Type = VIPS_INTERPRETATION_sRGB;
+
+  if (vips_pngsave(image, StringValueCStr(output_val),
+      "compression", 6,
+      "keep", VIPS_FOREIGN_KEEP_NONE,
+      NULL) != 0) {
+    g_object_unref(image);
+    raise_vips();
+  }
+  g_object_unref(image);
+  return Qtrue;
+}
+
+static VALUE rb_pages(VALUE self, VALUE path_val, VALUE max_pixels_val) {
+  Check_Type(path_val, T_STRING);
+  const char *fmt = NULL;
+  VipsImage *image = load_explicit(StringValueCStr(path_val), &fmt);
+  long long pixels = 0, max_pixels = 0;
+  if (pixels_exceed_limit(image, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(image);
+    raise_pixels_limit(pixels, max_pixels);
+  }
+
+  /* Loaders fill the n-pages header from the container directory during the
+   * header scan, so no pixel data is decoded here. Formats without the field
+   * report one page. */
+  int pages = vips_image_get_n_pages(image);
+  g_object_unref(image);
+  return INT2NUM(pages);
+}
+
+static VALUE rb_dominant_color(VALUE self, VALUE path_val, VALUE max_pixels_val) {
+  Check_Type(path_val, T_STRING);
+  const char *input_fmt = NULL;
+  VipsImage *in = load_explicit(StringValueCStr(path_val), &input_fmt);
+  long long pixels = 0, max_pixels = 0;
+  if (pixels_exceed_limit(in, max_pixels_val, &pixels, &max_pixels)) {
+    g_object_unref(in);
+    raise_pixels_limit(pixels, max_pixels);
+  }
+
+  /* Normalise to 8-bit sRGB so per-band means are comparable across source
+   * colourspaces and bit depths (CMYK JPEG, 16-bit PNG, grayscale). Any alpha
+   * band passes through unaltered and is ignored below: the result is the
+   * unweighted RGB mean, the same statistic the ImageMagick histogram path
+   * reports. */
+  VipsImage *srgb = NULL;
+  if (vips_colourspace_issupported(in)) {
+    if (vips_colourspace(in, &srgb, VIPS_INTERPRETATION_sRGB, NULL) != 0) {
+      g_object_unref(in);
+      raise_vips();
+    }
+  } else {
+    srgb = in;
+    g_object_ref(srgb);
+  }
+
+  /* Premultiply so transparent pixels contribute in proportion to their
+   * alpha. ImageMagick's resize filters work on premultiplied data, so this
+   * keeps the two backends in agreement; it is also what a human calls the
+   * image's average colour. */
+  int has_alpha = vips_image_hasalpha(srgb);
+  VipsImage *work = NULL;
+  if (has_alpha) {
+    if (vips_premultiply(srgb, &work, NULL) != 0) {
+      g_object_unref(srgb);
+      g_object_unref(in);
+      raise_vips();
+    }
+  } else {
+    work = srgb;
+    g_object_ref(work);
+  }
+
+  VipsImage *stats = NULL;
+  if (vips_stats(work, &stats, NULL) != 0) {
+    g_object_unref(work);
+    g_object_unref(srgb);
+    g_object_unref(in);
+    raise_vips();
+  }
+
+  /* vips_stats returns a one-band double image: row 0 holds whole-image
+   * statistics, row b+1 the statistics for band b; column 4 is the mean.
+   * Grayscale sources replicate their single band across R, G and B. */
+  int bands = work->Bands;
+  int colour_bands = has_alpha ? bands - 1 : bands;
+  if (colour_bands > 3) colour_bands = 3;
+  if (colour_bands < 1) {
+    g_object_unref(stats);
+    g_object_unref(work);
+    g_object_unref(srgb);
+    g_object_unref(in);
+    rb_raise(eInvalid, "image has no colour bands");
+  }
+
+  double band_mean[4] = { 0.0, 0.0, 0.0, 0.0 };
+  int rows_needed = has_alpha ? colour_bands + 1 : colour_bands;
+  for (int band = 0; band < rows_needed; band++) {
+    /* The alpha band is always the image's last band, even when more than
+     * three colour bands were clamped away above. */
+    int image_band = (has_alpha && band == colour_bands) ? bands - 1 : band;
+    double *vec = NULL;
+    int n = 0;
+    if (vips_getpoint(stats, &vec, &n, 4, image_band + 1, NULL) != 0) {
+      g_object_unref(stats);
+      g_object_unref(work);
+      g_object_unref(srgb);
+      g_object_unref(in);
+      raise_vips();
+    }
+    band_mean[band] = n > 0 ? vec[0] : 0.0;
+    g_free(vec);
+  }
+
+  g_object_unref(stats);
+  g_object_unref(work);
+  g_object_unref(srgb);
+  g_object_unref(in);
+
+  /* Premultiplied band means are E[c * a / 255]; dividing by the mean alpha
+   * recovers the alpha-weighted colour average E[c * a] / E[a]. A fully
+   * transparent image has no visible colour and reports black. */
+  double means[3] = { 0.0, 0.0, 0.0 };
+  double alpha_mean = has_alpha ? band_mean[colour_bands] : 255.0;
+  for (int band = 0; band < 3; band++) {
+    double value = band_mean[band < colour_bands ? band : colour_bands - 1];
+    if (has_alpha) value = alpha_mean > 0.0 ? value * 255.0 / alpha_mean : 0.0;
+    means[band] = value;
+  }
+
+  VALUE rgb = rb_ary_new_capa(3);
+  for (int band = 0; band < 3; band++) {
+    long rounded = lround(means[band]);
+    if (rounded < 0) rounded = 0;
+    if (rounded > 255) rounded = 255;
+    rb_ary_push(rgb, LONG2NUM(rounded));
+  }
+  return rgb;
+}
+
 void Init_safe_image_native(void) {
   mSafeImage = rb_define_module("SafeImage");
   eError = rb_const_get(mSafeImage, rb_intern("Error"));
@@ -389,4 +565,7 @@ void Init_safe_image_native(void) {
   rb_define_singleton_method(mNative, "thumbnail", rb_thumbnail, 7);
   rb_define_singleton_method(mNative, "resize", rb_resize, 6);
   rb_define_singleton_method(mNative, "crop_north", rb_crop_north, 7);
+  rb_define_singleton_method(mNative, "dominant_color", rb_dominant_color, 2);
+  rb_define_singleton_method(mNative, "pages", rb_pages, 2);
+  rb_define_singleton_method(mNative, "png_from_rgba", rb_png_from_rgba, 4);
 }

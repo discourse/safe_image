@@ -16,7 +16,7 @@ module SafeImage
     }.freeze
 
     OPERATIONS = %w[
-      probe thumbnail type size dimensions info orientation optimize resize crop downsize convert convert_to_jpeg fix_orientation
+      probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
       convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
       sanitize_svg!
     ].freeze
@@ -97,7 +97,7 @@ module SafeImage
         payload = JSON.parse(ARGV.fetch(0), symbolize_names: true)
         operation = payload.fetch(:operation).to_s
         allowed_operations = %w[
-          probe thumbnail type size dimensions info orientation optimize resize crop downsize convert convert_to_jpeg fix_orientation
+          probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
           convert_favicon_to_png frame_count animated? letter_avatar optimize_image! sanitize_svg!
         ]
         raise ArgumentError, "unsupported sandbox operation: #{operation}" unless allowed_operations.include?(operation)

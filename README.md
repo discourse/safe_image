@@ -3,8 +3,8 @@
 Safe Image is a small Ruby image-processing boundary for untrusted uploads.
 
 It gives an application one narrow API for probing, thumbnailing, resizing,
-cropping, converting, optimising, SVG sanitising, animation checks, favicon
-conversion, and letter-avatar generation. The default fast path uses a tiny
+cropping, converting, optimising, SVG sanitising, animation checks, dominant
+colour extraction, favicon conversion, and letter-avatar generation. The default fast path uses a tiny
 native extension that calls `libvips` directly. Compatibility paths use
 ImageMagick, but with shell-free command execution and a restrictive bundled
 policy.
@@ -144,9 +144,11 @@ Supported inputs:
 
 - `jpg` / `jpeg`
 - `png`
+- `gif` (first frame, via libvips' bundled libnsgif loader)
 - `webp`
 - `heic` / `heif`
 - `avif`
+- `ico` (pure-Ruby directory parse; reports the largest entry's dimensions)
 
 ```ruby
 info = SafeImage.probe("upload.jpg", max_pixels: 40_000_000)
@@ -181,6 +183,7 @@ Supported outputs for the direct libvips backend:
 
 - `jpg` / `jpeg`
 - `png`
+- `gif` (requires a libvips build with cgif support; raises `UnsupportedFormatError` otherwise)
 - `webp`
 - `avif`
 
@@ -355,6 +358,13 @@ SafeImage.remote_animated?("https://example.com/image.webp", max_bytes: 10.megab
 # => true / false
 ```
 
+### `SafeImage.remote_dominant_color(url, ...)`
+
+```ruby
+SafeImage.remote_dominant_color("https://example.com/image.png", max_bytes: 10.megabytes)
+# => "6F745E"
+```
+
 ### `SafeImage.fetch_remote(url, ...) { |path| ... }`
 
 Downloads a remote image to a tempfile and yields the local path:
@@ -443,7 +453,12 @@ SafeImage.fix_orientation("upload.jpg", "oriented.jpg")
 
 ### `SafeImage.convert_favicon_to_png(from, to, optimize: true, max_pixels: nil)`
 
-Extracts the largest ICO frame and writes PNG.
+Extracts the largest ICO entry and writes PNG, without ImageMagick: the
+container and legacy DIB payloads (1/4/8/24/32bpp BI_RGB plus the AND mask)
+are parsed in pure Ruby with explicit bounds checks, and pixels are encoded
+through the hardened native libvips path. Embedded PNG payloads are
+re-encoded — never copied through verbatim — and their pixel cap is enforced
+from the IHDR before any decoder runs.
 
 ```ruby
 SafeImage.convert_favicon_to_png("favicon.ico", "favicon.png")
@@ -451,7 +466,10 @@ SafeImage.convert_favicon_to_png("favicon.ico", "favicon.png")
 
 ### `SafeImage.frame_count(path, max_pixels: nil)`
 
-Returns the frame count using the hardened ImageMagick identify path.
+Returns the frame count from the n-pages header field via the native libvips
+loaders — no pixel data is decoded. ICO directories are counted by the
+pure-Ruby parser. ImageMagick identify remains only as the fallback for
+formats neither path knows.
 
 ```ruby
 frames = SafeImage.frame_count("animated.gif")
@@ -463,6 +481,29 @@ Returns `true` when `frame_count(path) > 1`.
 
 ```ruby
 SafeImage.animated?("animated.webp")
+```
+
+### `SafeImage.dominant_color(path, max_pixels: nil, backend: :auto)`
+
+Computes the image's alpha-weighted average colour (first frame for animated
+formats) and returns it as an uppercase `RRGGBB` hex string, matching the
+value Discourse stores from `Upload#calculate_dominant_color!`.
+
+The default `:auto` backend computes the per-channel mean natively through
+libvips; ICO routes through the pure-Ruby ICO decoder, so no format needs
+ImageMagick. Pass
+`backend: :vips` to forbid ImageMagick entirely, or `backend: :imagemagick`
+for the histogram command Discourse runs today. The two backends agree to
+within a few least-significant bits per channel (ImageMagick averages through
+its resize filter rather than computing the exact mean).
+
+The pixel cap is enforced before the full decode on either backend,
+undecodable input raises `InvalidImageError` (never retried on the other
+backend), and SVG input raises `UnsupportedFormatError`.
+
+```ruby
+SafeImage.dominant_color("upload.png")                       # => "6F745E"
+SafeImage.dominant_color("upload.png", backend: :vips)       # ImageMagick-free
 ```
 
 ### `SafeImage.letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "NimbusSans-Regular")`
@@ -611,6 +652,7 @@ sandbox worker:
 - `dimensions`
 - `info`
 - `orientation`
+- `dominant_color`
 - `thumbnail`
 - `optimize`
 - `resize`
@@ -646,6 +688,7 @@ Safe Image currently covers the image-operation surface Discourse performs in:
 - HEIC/PNG-to-JPEG conversion
 - orientation fixing
 - animated image detection
+- dominant colour extraction
 - JPEG/PNG optimisation
 - SVG sanitising
 

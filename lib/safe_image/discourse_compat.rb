@@ -206,14 +206,20 @@ module SafeImage
     end
 
     def convert_favicon_to_png(from, to, optimize: true, max_pixels: nil)
-      frame_count(from, max_pixels: max_pixels) if max_pixels
       output = PathSafety.ensure_safe_output_path!(to).to_s
-      info = ImageMagickBackend.convert_ico_to_png(input: Pathname.new(from).expand_path.to_s, output: output)
+      info = Ico.convert_to_png(from, output, max_pixels: max_pixels)
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true) if optimize
-      result_from_info(from, output, info, "imagemagick")
+      result_from_info(from, output, info, "ico-ruby+libvips")
     end
 
     def frame_count(path, max_pixels: nil)
+      # ico directories are counted by the pure-Ruby parser; everything else
+      # is a header-only native count via the n-pages field. ImageMagick is
+      # the last resort for formats neither path knows.
+      return Ico.frame_count(path, max_pixels: max_pixels) if File.extname(PathSafety.local_path(path)).downcase == ".ico"
+
+      VipsBackend.frame_count(path, max_pixels: max_pixels)
+    rescue UnsupportedFormatError
       ImageMagickBackend.frame_count(path, max_pixels: max_pixels)
     end
 

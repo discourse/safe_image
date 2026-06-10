@@ -6,8 +6,8 @@ require "tempfile"
 
 module SafeImage
   class Processor
-    SUPPORTED_INPUTS = %w[jpg jpeg png webp heic heif avif].freeze
-    SUPPORTED_OUTPUTS = %w[jpg jpeg png webp avif].freeze
+    SUPPORTED_INPUTS = %w[jpg jpeg png gif webp heic heif avif].freeze
+    SUPPORTED_OUTPUTS = %w[jpg jpeg png gif webp avif].freeze
 
     def initialize(max_pixels: nil, backend: :vips, execution: :inline, encoder: :auto, chroma_subsampling: :auto)
       @max_pixels = max_pixels

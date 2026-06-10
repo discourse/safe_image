@@ -167,6 +167,38 @@ module SafeImage
       1
     end
 
+    # Averages the whole image down to one pixel and reports it as an RRGGBB
+    # hex string, mirroring Discourse's Upload#calculate_dominant_color!.
+    def dominant_color(path, timeout: Runner::DEFAULT_TIMEOUT)
+      command = convert_command
+      path = PathSafety.ensure_imagemagick_input_file!(path)
+      ext = File.extname(path).delete_prefix(".").downcase
+      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, = Runner.run!(
+        [
+          command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{path}[0]",
+          "-depth", "8",
+          "-resize", "1x1",
+          "-define", "histogram:unique-colors=true",
+          "-format", "%c",
+          "histogram:info:"
+        ],
+        timeout: timeout
+      )
+
+      # Typical output: `1: (110,116,93) #6F745E srgb(110,116,93)`. Alpha adds
+      # two more hex digits; grayscale images report one channel (two digits,
+      # four with alpha) instead of three.
+      digits = stdout[/#(\h+)/, 1]
+      hex =
+        case digits&.length
+        when 6, 8 then digits[0, 6]
+        when 2, 4 then digits[0, 2] * 3
+        end
+      raise InvalidImageError, "could not parse dominant color from ImageMagick output: #{stdout.strip.inspect}" if hex.nil?
+      hex.upcase
+    end
+
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize:, font: "NimbusSans-Regular", timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
       output = PathSafety.ensure_safe_output_path!(output).to_s

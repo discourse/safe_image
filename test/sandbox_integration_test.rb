@@ -29,6 +29,7 @@ module SafeImage
       assert_equal [8900, 8900], SafeImage.size(JPG, max_pixels: JPG_PIXELS)
       assert_equal [2032, 1312], SafeImage.dimensions(PNG, max_pixels: PNG_PIXELS)
       assert_equal 1, SafeImage.orientation(JPG, max_pixels: JPG_PIXELS).to_i
+      assert_match(/\A\h{6}\z/, SafeImage.dominant_color(PNG, max_pixels: PNG_PIXELS))
 
       info = SafeImage.info(JPG, animated: true, orientation: true, max_pixels: JPG_PIXELS)
       assert_equal [8900, 8900], [info.width, info.height]

@@ -25,6 +25,7 @@ require_relative "safe_image/optimizer"
 require_relative "safe_image/svg_metadata"
 require_relative "safe_image/svg_sanitizer"
 require_relative "safe_image/remote"
+require_relative "safe_image/ico"
 require_relative "safe_image/image_magick_backend"
 require_relative "safe_image/jpegli_backend"
 require_relative "safe_image/vips_backend"
@@ -84,6 +85,21 @@ module SafeImage
           height: info.fetch(:height),
           filesize: File.size(path),
           backend: "svg-metadata",
+          duration_ms: info.fetch(:duration_ms),
+          optimizer: nil
+        )
+      elsif File.extname(path).downcase == ".ico"
+        # Pure-Ruby directory parse; reports the largest entry's dimensions.
+        info = Ico.probe(path, max_pixels: max_pixels)
+        Result.new(
+          input: File.expand_path(path),
+          output: nil,
+          input_format: "ico",
+          output_format: nil,
+          width: info.fetch(:width),
+          height: info.fetch(:height),
+          filesize: File.size(path),
+          backend: "ico-metadata",
           duration_ms: info.fetch(:duration_ms),
           optimizer: nil
         )
@@ -153,6 +169,40 @@ module SafeImage
     end
   end
 
+  def dominant_color(path, max_pixels: nil, backend: :auto)
+    maybe_sandbox(:dominant_color, args: [path], kwargs: { max_pixels: max_pixels, backend: backend }) do
+      case backend.to_sym
+      when :vips
+        VipsBackend.dominant_color(path, max_pixels: max_pixels)
+      when :imagemagick, :magick
+        imagemagick_dominant_color(path, max_pixels: max_pixels)
+      when :auto
+        # Format routing, mirroring probe: the native vips path handles every
+        # format it can decode; ico goes through the pure-Ruby ICO decoder.
+        # Decode failures raise InvalidImageError and are never retried on
+        # another backend.
+        begin
+          VipsBackend.dominant_color(path, max_pixels: max_pixels)
+        rescue UnsupportedFormatError
+          if File.extname(PathSafety.local_path(path)).downcase == ".ico"
+            Ico.dominant_color(path, max_pixels: max_pixels)
+          else
+            imagemagick_dominant_color(path, max_pixels: max_pixels)
+          end
+        end
+      else
+        raise ArgumentError, "unknown backend: #{backend.inspect}"
+      end
+    end
+  end
+
+  def imagemagick_dominant_color(path, max_pixels:)
+    # Probe first: rejects undecodable files and enforces the pixel cap
+    # before ImageMagick fully decodes the image to average it.
+    probe(path, max_pixels: max_pixels)
+    ImageMagickBackend.dominant_color(path)
+  end
+
   def fastimage_type(format)
     format.to_s == "jpg" ? :jpeg : format.to_s.to_sym
   end
@@ -175,6 +225,10 @@ module SafeImage
 
   def remote_animated?(url, **kwargs)
     Remote.animated?(url, **kwargs)
+  end
+
+  def remote_dominant_color(url, **kwargs)
+    Remote.dominant_color(url, **kwargs)
   end
 
   def fetch_remote(url, **kwargs, &block)

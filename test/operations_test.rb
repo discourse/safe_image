@@ -37,6 +37,25 @@ module SafeImage
       assert_result result, width: 120, height: 120
     end
 
+    def test_thumbnail_of_animated_gif_takes_first_frame
+      result = SafeImage.thumbnail(
+        input: GIF, output: tmp_path("gif.jpg"),
+        width: 120, height: 120, backend: :vips, optimize: true, max_pixels: PNG_PIXELS
+      )
+      assert_result result, width: 120, height: 120
+    end
+
+    def test_thumbnail_to_gif_output
+      gif_save_or_skip do
+        result = SafeImage.thumbnail(
+          input: GIF, output: tmp_path("thumb.gif"),
+          width: 120, height: 120, backend: :vips, max_pixels: PNG_PIXELS
+        )
+        assert_result result, width: 120, height: 120, format: "gif"
+        assert_equal :gif, SafeImage.type(tmp_path("thumb.gif"))
+      end
+    end
+
     def test_crop_with_imagemagick_backend
       result = SafeImage.crop(JPG, tmp_path("crop.jpg"), 400, 400, backend: :imagemagick, max_pixels: JPG_PIXELS)
       assert_result result, width: 400, height: 400, format: "jpg"

@@ -20,6 +20,17 @@ module SafeImage
       Native.resize(input.to_s, output.to_s, scale, normalized_format(format), Integer(quality), max_pixels)
     end
 
+    def dominant_color(input, max_pixels: nil)
+      input = PathSafety.ensure_regular_file!(input).to_s
+      rgb = Native.dominant_color(input, max_pixels)
+      format("%02X%02X%02X", *rgb)
+    end
+
+    def frame_count(input, max_pixels: nil)
+      input = PathSafety.ensure_regular_file!(input).to_s
+      Native.pages(input, max_pixels)
+    end
+
     def normalized_format(format)
       format = format.to_s.downcase
       format == "jpeg" ? "jpg" : format

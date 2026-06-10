@@ -75,5 +75,14 @@ module SafeImage
     rescue SafeImage::Error => e
       skip "HEIC is not supported by the installed ImageMagick delegates: #{e.message}"
     end
+
+    # GIF output depends on libvips being built with cgif support, so treat a
+    # missing saver as an environment gap rather than a regression.
+    def gif_save_or_skip
+      yield
+    rescue SafeImage::UnsupportedFormatError => e
+      raise unless e.message.include?("cannot save GIF")
+      skip "GIF output is not supported by this libvips build: #{e.message}"
+    end
   end
 end
