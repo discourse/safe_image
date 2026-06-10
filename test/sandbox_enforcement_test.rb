@@ -28,10 +28,16 @@ module SafeImage
       # Bundler's RUBYOPT would re-add the full bundle (landlock included) to
       # the child's load path, so scrub it alongside disabling RubyGems.
       env = { "RUBYOPT" => nil, "BUNDLE_GEMFILE" => nil, "BUNDLE_BIN_PATH" => nil }
-      command = [RbConfig.ruby, "--disable-gems", "-I", File.expand_path("../lib", __dir__)]
-      # rexml is a bundled gem; expose its load path to the gem-less child.
-      rexml_lib = $LOAD_PATH.find { |path| path.include?("rexml") }
-      command += ["-I", rexml_lib] if rexml_lib
+      command = [RbConfig.ruby, "--disable-gems"]
+      # With RubyGems disabled the child loses every gem's load path, including
+      # the gem's own bundled runtime deps (rexml, and fiddle from Ruby 3.5 on,
+      # which ships a C extension under its own load-path entries). Pass the
+      # parent's load paths through so those deps resolve, but drop landlock so
+      # it stays genuinely unloadable and sandbox_available? reports false.
+      load_paths = [File.expand_path("../lib", __dir__), *$LOAD_PATH]
+      load_paths.reject { |path| path.to_s.include?("landlock") }.uniq.each do |path|
+        command += ["-I", path]
+      end
 
       stdout, stderr, status = Open3.capture3(env, *command, "-e", SCRIPT)
 
