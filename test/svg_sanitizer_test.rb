@@ -79,5 +79,18 @@ module SafeImage
       path = write_tmp("huge.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="100000" height="100000"></svg>')
       assert_raises(LimitError) { SafeImage.sanitize_svg!(path) }
     end
+
+    # A UTF-16 DOCTYPE slips past the ASCII byte-level DOCTYPE guard, so the
+    # sanitizer must reject non-UTF-8 input outright rather than hand it to REXML.
+    def test_rejects_utf16_encoded_payload
+      src = <<~SVG
+        <?xml version="1.0"?>
+        <!DOCTYPE svg [ <!ENTITY xss "<script>alert(1)</script>"> ]>
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">&xss;</svg>
+      SVG
+      path = tmp_path("utf16-payload.svg")
+      File.binwrite(path, ("﻿".encode(Encoding::UTF_16LE) + src.encode(Encoding::UTF_16LE)).b)
+      assert_raises(InvalidImageError) { SafeImage.sanitize_svg!(path) }
+    end
   end
 end

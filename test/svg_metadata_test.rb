@@ -91,5 +91,97 @@ module SafeImage
       txt = write_tmp("not-svg.txt", '<svg width="1" height="1"></svg>')
       assert_raises(UnsupportedFormatError) { SafeImage.size(txt) }
     end
+
+    # The DOCTYPE/PI guards are ASCII byte regexes. A UTF-16 document interleaves
+    # NUL bytes between ASCII characters, so "<!DOCTYPE" never matches the regex,
+    # yet REXML decodes the BOM and honours the DOCTYPE. Reject non-UTF-8 input
+    # before the byte scans so the bytes we inspect are the bytes REXML parses.
+    def test_rejects_utf16_doctype_smuggling
+      [Encoding::UTF_16LE, Encoding::UTF_16BE].each do |encoding|
+        src = <<~SVG
+          <?xml version="1.0"?>
+          <!DOCTYPE svg [ <!ENTITY xss "<script>alert(1)</script>"> ]>
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">&xss;</svg>
+        SVG
+        bom = "﻿".encode(encoding)
+        path = tmp_path("smuggle-#{encoding.name.downcase}.svg")
+        File.binwrite(path, (bom + src.encode(encoding)).b)
+        assert_raises(InvalidImageError, "UTF-16 (#{encoding}) DOCTYPE bypassed the guard") do
+          SafeImage.size(path)
+        end
+      end
+    end
+
+    def test_rejects_embedded_nul_bytes
+      path = tmp_path("nul.svg")
+      File.binwrite(path, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\0\" height=\"1\"></svg>")
+      assert_raises(InvalidImageError) { SafeImage.size(path) }
+    end
+
+    # Multi-byte (a lead byte can swallow a following quote) and transforming
+    # (UTF-7's "+ADw-" decodes to "<") encodings let bytes our ASCII scans
+    # cannot see become markup the browser acts on, so reject them by name.
+    def test_rejects_multibyte_and_transforming_encodings
+      %w[Shift_JIS GBK EUC-JP UTF-7 ISO-2022-JP].each do |encoding|
+        svg = write_tmp("mb-#{encoding}.svg", <<~SVG)
+          <?xml version="1.0" encoding="#{encoding}"?>
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>
+        SVG
+        assert_raises(InvalidImageError, "accepted unsafe encoding #{encoding}") { SafeImage.size(svg) }
+      end
+    end
+
+    # Single-byte, ASCII-transparent charsets are safe: every markup byte is
+    # below 0x80 and decodes identically to ASCII, so the byte-level guards stay
+    # correct while REXML decodes the high bytes (here e-acute, 0xE9) as latin1.
+    def test_accepts_single_byte_legacy_encoding
+      svg = <<~SVG.encode(Encoding::ISO_8859_1)
+        <?xml version="1.0" encoding="ISO-8859-1"?>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"><title>café</title></svg>
+      SVG
+      path = tmp_path("latin1.svg")
+      File.binwrite(path, svg.b)
+      assert_equal [12, 8], SafeImage.size(path)
+    end
+
+    # A UTF-8 byte-order mark is still UTF-8: the ASCII scans see through it, so
+    # it must keep working rather than be swept up by the non-UTF-8 rejection.
+    def test_accepts_utf8_bom
+      path = tmp_path("utf8-bom.svg")
+      File.binwrite(path, "\xEF\xBB\xBF<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"8\"></svg>")
+      assert_equal [12, 8], SafeImage.size(path)
+    end
+
+    # The encoding allowlist matches name shapes, which also fit names no
+    # decoder knows ("utf8", "windows-1259"). Those must fail closed as
+    # InvalidImageError rather than leak REXML's bare ArgumentError.
+    def test_rejects_lookalike_encoding_names_as_invalid_image
+      %w[utf8 windows-1259 ISO-8859-42 cp-1252 windows1252 iso-88591].each do |encoding|
+        svg = write_tmp("lookalike-#{encoding}.svg", <<~SVG)
+          <?xml version="1.0" encoding="#{encoding}"?>
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>
+        SVG
+        assert_raises(InvalidImageError, "lookalike encoding #{encoding} should fail closed") { SafeImage.size(svg) }
+      end
+    end
+
+    # Alternate spellings that Ruby does resolve (cp1252, iso8859-1) stay accepted.
+    def test_accepts_resolvable_encoding_aliases
+      %w[cp1252 iso8859-1].each do |encoding|
+        svg = write_tmp("alias-#{encoding}.svg", <<~SVG)
+          <?xml version="1.0" encoding="#{encoding}"?>
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"></svg>
+        SVG
+        assert_equal [12, 8], SafeImage.size(svg)
+      end
+    end
+
+    # Defense in depth: if a declared encoding ever reaches REXML without
+    # passing the gate, the bare ArgumentError from its Encoding.find lookup
+    # must still surface as InvalidImageError.
+    def test_scan_maps_rexml_encoding_errors_to_invalid_image
+      xml = "<?xml version=\"1.0\" encoding=\"bogus-name\"?><svg></svg>"
+      assert_raises(InvalidImageError) { SvgMetadata.scan_svg!(xml) }
+    end
   end
 end

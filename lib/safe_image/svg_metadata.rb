@@ -18,6 +18,37 @@ module SafeImage
     LENGTH_PATTERN = /\A\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(?:px)?\s*\z/i.freeze
     VIEWBOX_SPLIT = /[\s,]+/.freeze
 
+    # Byte-order marks for the multi-byte encodings whose ASCII characters our
+    # byte-level scans below cannot see through. XML mandates a BOM for UTF-16
+    # and UTF-32, so a document in one of these encodings either carries a BOM
+    # here or contains NUL bytes for its ASCII characters (caught separately).
+    # Order matters: the UTF-32 LE mark begins with the UTF-16 LE mark.
+    NON_UTF8_BOMS = [
+      "\xFF\xFE\x00\x00".b, # UTF-32 LE
+      "\x00\x00\xFE\xFF".b, # UTF-32 BE
+      "\xFF\xFE".b,         # UTF-16 LE
+      "\xFE\xFF".b          # UTF-16 BE
+    ].freeze
+
+    UTF8_BOM = "\xEF\xBB\xBF".b.freeze
+    # Declared encodings we accept: UTF-8/ASCII plus the single-byte,
+    # ASCII-transparent legacy charsets (ISO-8859-*, Windows-125x). Their bytes
+    # below 0x80 decode to identical ASCII, so the byte scans below see the same
+    # markup any decoder (REXML or a browser) does; and being single-byte, no
+    # lead byte can swallow a following quote the way Shift-JIS, GBK, or Big5
+    # can. Multi-byte (Shift-JIS, GBK, EUC-*, ISO-2022-*), transforming (UTF-7:
+    # "+ADw-" decodes to "<"), and NUL-interleaved (UTF-16/32) encodings are
+    # deliberately excluded — they let bytes our ASCII scans cannot see become
+    # markup the parser acts on. The shape match alone is not airtight:
+    # "utf8" or "windows-1259" fit the pattern yet name no real encoding, so a
+    # name must also resolve via Encoding.find to pass — lookalikes fail
+    # closed here instead of leaking REXML's bare ArgumentError to the caller.
+    SAFE_DECLARED_ENCODING =
+      /\A(?:utf-?8|us-ascii|ascii|iso-?8859-?\d{1,2}|(?:windows|cp)-?125\d)\z/i.freeze
+    # ASCII-only so it matches the binary buffer; the optional BOM is stripped
+    # before matching rather than embedded here (which would make this UTF-8).
+    XML_DECL_ENCODING = /\A\s*<\?xml\b[^>]*?\bencoding\s*=\s*["']([^"']+)["']/i.freeze
+
     def probe(path, max_pixels: nil, max_bytes: MAX_SVG_BYTES)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       path = safe_svg_path(path)
@@ -57,7 +88,10 @@ module SafeImage
       raise InvalidImageError, "SVG root required" unless doc.root&.name == "svg"
 
       doc
-    rescue REXML::ParseException => e
+    # ArgumentError: REXML resolves the declared encoding with Encoding.find,
+    # which raises it bare on names it doesn't know; untrusted input must stay
+    # inside our error hierarchy.
+    rescue REXML::ParseException, ArgumentError => e
       raise InvalidImageError, "invalid SVG: #{e.message}"
     end
 
@@ -79,8 +113,38 @@ module SafeImage
     end
 
     def reject_unsafe_xml!(xml)
+      # The DOCTYPE/PI scans below are ASCII byte regexes; they only see what
+      # they expect when the bytes we scan decode to the same markup REXML
+      # parses. That holds for UTF-8 and single-byte ASCII-transparent charsets
+      # but not for UTF-16/32 or multi-byte/transforming encodings, so reject
+      # those first.
+      reject_unsafe_encoding!(xml)
       raise InvalidImageError, "doctype is not allowed in SVG" if xml.match?(/<!DOCTYPE/i)
       raise InvalidImageError, "XML processing instructions are not allowed in SVG" if xml.match?(/<\?(?!xml\s)/i)
+    end
+
+    def reject_unsafe_encoding!(xml)
+      bytes = xml.b
+      # UTF-16/UTF-32 interleave NUL bytes between ASCII characters, hiding
+      # "<!DOCTYPE" from the ASCII scans while REXML still decodes and honours
+      # it. (NUL is invalid in XML 1.0 regardless, so this also rejects garbage.)
+      if NON_UTF8_BOMS.any? { |bom| bytes.start_with?(bom) } || bytes.include?("\x00".b)
+        raise InvalidImageError, "SVG must use a single-byte or UTF-8 encoding"
+      end
+
+      bytes = bytes.byteslice(UTF8_BOM.bytesize..) if bytes.start_with?(UTF8_BOM)
+      match = bytes.match(XML_DECL_ENCODING)
+      return unless match
+      return if match[1].match?(SAFE_DECLARED_ENCODING) && known_encoding?(match[1])
+
+      raise InvalidImageError, "unsupported SVG encoding: #{match[1]}"
+    end
+
+    def known_encoding?(name)
+      Encoding.find(name)
+      true
+    rescue ArgumentError
+      false
     end
 
     def parse_length(value)
@@ -155,7 +219,8 @@ module SafeImage
 
       raise InvalidImageError, "SVG root required" unless root_name == "svg"
       [root_name, root_attributes]
-    rescue REXML::ParseException => e
+    # ArgumentError: same REXML encoding-lookup mapping as in parse above.
+    rescue REXML::ParseException, ArgumentError => e
       raise InvalidImageError, "invalid SVG: #{e.message}"
     end
   end
