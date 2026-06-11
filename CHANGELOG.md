@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (breaking)
 
+- **`sanitize_svg!` now delegates to [svg-hush](https://github.com/cloudflare/svg-hush); signature is `sanitize_svg!(path, max_pixels:)`.** This supersedes the bespoke REXML/CSS sanitizer and the `id_namespace:` inline-safety work described in the other unreleased entries below — both are removed in favour of Cloudflare's memory-safe, fuzzed Rust filter, bundled as a prebuilt per-platform binary and run through the existing argv-only + Landlock path. Output is document-safe (serve as an `<img>`/CSS-url/file): scripting and event handlers are stripped, elements/attributes outside svg-hush's allowlist are dropped, and URLs are rewritten same-origin only. The byte-size/encoding/pixel pre-checks are unchanged. The `id_namespace:` argument is removed (there is no inline-into-DOM mode); callers update `sanitize_svg!(path, id_namespace: …)` → `sanitize_svg!(path)`. Prompted by a sanitizer bug in which a namespace-prefixed `onload` could survive on a real `<svg>` element (an executing same-origin XSS in `:standalone` output).
+
 - **`sanitize_svg!` now requires `id_namespace:`.** The argument forces a
   deliberate choice of where the output may be used, removing the footgun of a
   silently-wrong default. Pass `:standalone` for output served only as an
