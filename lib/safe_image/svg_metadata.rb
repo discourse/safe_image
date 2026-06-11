@@ -12,6 +12,12 @@ module SafeImage
     MAX_SVG_ATTRIBUTES = 50_000
     MAX_SVG_DIMENSION = 100_000
     MAX_SVG_PIXELS = 100_000_000
+    # Upper bound on the render tree after <use> references are instantiated.
+    # The caps above bound the *source* document, but <use href="#id"> is
+    # expanded at render time, so a few dozen source elements can fan out into
+    # billions of instantiated nodes ("use bomb"). This bounds the expanded
+    # node count the sanitized output can cost any consumer (browser/rasterizer).
+    MAX_SVG_USE_EXPANSION = 1_000_000
 
     LENGTH_PATTERN = /\A\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(?:px)?\s*\z/i.freeze
     VIEWBOX_SPLIT = /[\s,]+/.freeze

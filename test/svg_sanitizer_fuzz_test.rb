@@ -44,7 +44,13 @@ module SafeImage
           input = generated_svg(rng)
           path = write_tmp("svg-sanitize-fuzz-#{seed}-#{index}.svg", input)
 
-          SafeImage.sanitize_svg!(path, id_namespace: namespace)
+          begin
+            SafeImage.sanitize_svg!(path, id_namespace: namespace)
+          rescue InvalidImageError, LimitError
+            # Rejecting the whole document (e.g. a generated <use> cycle or
+            # expansion bomb) is always a safe outcome for adversarial input.
+            next
+          end
           cleaned = File.read(path)
           assert_svg_invariants(cleaned, namespace, input)
 

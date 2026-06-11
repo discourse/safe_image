@@ -96,6 +96,7 @@ module SafeImage
       raise InvalidImageError, "SVG root required" unless allowed_element?(root)
 
       root = sanitize_element!(root, namespace)
+      reject_use_expansion_bomb!(root)
       if namespace
         neutralize_root_overflow!(root)
         apply_scope_class!(root, namespace) if contains_style?(root)
@@ -194,6 +195,77 @@ module SafeImage
       element.attributes.each_attribute { |attr| attributes_to_delete << attr }
       attributes_to_delete.each { |attr| delete_attribute!(attr) }
       element.add_text(sanitized)
+    end
+
+    # Bounds the render tree a <use> graph instantiates. The structural caps in
+    # SvgMetadata bound the *source* document, but <use href="#id"> is expanded
+    # at render time: each <use> instantiates a deep copy of its target, so a
+    # chain of doubling groups fans a few dozen source nodes out into billions
+    # of rendered nodes (the SVG "use bomb"), and a cyclic reference expands
+    # forever. Walk the reference graph once — memoised so the walk itself
+    # cannot blow up, with an active-path set so a cycle is caught rather than
+    # recursed into — and reject when the instantiated node count would exceed
+    # the cap. Runs on the sanitized tree, so ids and href targets are already
+    # namespaced consistently and only same-document fragments remain.
+    def reject_use_expansion_bomb!(root)
+      id_map = {}
+      collect_ids(root, id_map)
+      subtree_render_cost(root, id_map, {}, {})
+    end
+
+    def collect_ids(element, id_map)
+      id = element.attributes["id"]
+      id_map[id.to_s] = element if id && !id_map.key?(id.to_s)
+      element.children.each do |child|
+        collect_ids(child, id_map) if child.is_a?(REXML::Element)
+      end
+    end
+
+    def subtree_render_cost(element, id_map, memo, active)
+      key = element.object_id
+      cached = memo[key]
+      return cached if cached
+      raise InvalidImageError, "SVG <use> reference cycle" if active[key]
+
+      active[key] = true
+      cost = 1
+      element.children.each do |child|
+        next unless child.is_a?(REXML::Element)
+
+        cost += subtree_render_cost(child, id_map, memo, active)
+        check_use_expansion!(cost)
+      end
+
+      if use_element?(element) && (target = use_target(element, id_map))
+        cost += subtree_render_cost(target, id_map, memo, active)
+        check_use_expansion!(cost)
+      end
+
+      active.delete(key)
+      memo[key] = cost
+    end
+
+    def check_use_expansion!(cost)
+      return if cost <= SvgMetadata::MAX_SVG_USE_EXPANSION
+
+      raise LimitError, "SVG <use> expansion exceeds #{SvgMetadata::MAX_SVG_USE_EXPANSION} rendered nodes"
+    end
+
+    def use_element?(element)
+      element.name.to_s == "use" && (element.namespace.to_s.empty? || element.namespace.to_s == SVG_NAMESPACE)
+    end
+
+    def use_target(element, id_map)
+      ref = nil
+      element.attributes.each_attribute do |attr|
+        next unless href_attribute?(attr)
+
+        ref = attr.value.to_s
+        break
+      end
+      return unless ref&.start_with?("#")
+
+      id_map[ref[1..]]
     end
 
     def allowed_element?(element)

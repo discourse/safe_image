@@ -128,6 +128,56 @@ module SafeImage
       assert_no_active_or_fetching_attribute_values(out)
     end
 
+    # The "use bomb": a chain of groups that each <use> the previous one twice
+    # fans a few dozen source nodes out to 2^n instantiated nodes at render time.
+    # The source-document caps don't see this, so the sanitizer must bound the
+    # expanded render tree and reject.
+    def test_use_reference_expansion_bomb_is_rejected
+      levels = 30
+      defs = (1..levels).map do |i|
+        %(<g id="l#{i}"><use href="#l#{i - 1}"/><use href="#l#{i - 1}"/></g>)
+      end.join
+      bomb = write_tmp("use-bomb.svg", <<~SVG)
+        <svg xmlns="#{SVG_XMLNS}" width="10" height="10">
+          <defs><g id="l0"><rect width="1" height="1"/></g>#{defs}</defs>
+          <use href="#l#{levels}"/>
+        </svg>
+      SVG
+      assert_raises(LimitError) { SafeImage.sanitize_svg!(bomb, id_namespace: "u1") }
+    end
+
+    def test_use_reference_cycle_is_rejected
+      direct = write_tmp("use-cycle.svg", <<~SVG)
+        <svg xmlns="#{SVG_XMLNS}" width="10" height="10">
+          <g id="a"><use href="#a"/></g>
+          <use href="#a"/>
+        </svg>
+      SVG
+      assert_raises(InvalidImageError) { SafeImage.sanitize_svg!(direct, id_namespace: "u1") }
+
+      mutual = write_tmp("use-cycle-mutual.svg", <<~SVG)
+        <svg xmlns="#{SVG_XMLNS}" width="10" height="10">
+          <g id="a"><use href="#b"/></g>
+          <g id="b"><use href="#a"/></g>
+          <use href="#a"/>
+        </svg>
+      SVG
+      assert_raises(InvalidImageError) { SafeImage.sanitize_svg!(mutual, id_namespace: "u1") }
+    end
+
+    def test_legitimate_use_and_symbol_references_are_preserved
+      out = sanitize(<<~SVG, id_namespace: "u1")
+        <svg xmlns="#{SVG_XMLNS}" width="10" height="10">
+          <defs><symbol id="s"><rect width="4" height="4"/></symbol><g id="g"><rect width="2" height="2"/></g></defs>
+          <use href="#s"/>
+          <use href="#g"/>
+        </svg>
+      SVG
+
+      assert_includes out, "<symbol id='u1-s'", "legitimate symbol definition was dropped"
+      assert_equal 2, out.scan(/<use\b/).length, "legitimate use references were dropped"
+    end
+
     def test_doctype_external_entity_and_xml_stylesheet_are_rejected_before_dom_parse
       doctype = write_tmp("cve-xxe.svg", <<~SVG)
         <!DOCTYPE svg [ <!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>

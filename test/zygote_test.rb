@@ -159,7 +159,7 @@ module SafeImage
         puts SafeImage::Zygote.pid
       RUBY
       out = IO.popen([RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-e", script], &:read)
-      assert $CHILD_STATUS&.success? || $?.success?, "parent script failed: #{out}"
+      assert $?.success?, "parent script failed: #{out}"
       zygote_pid = Integer(out[/\d+/])
 
       assert deadline_wait { !zygote_alive?(zygote_pid) },
