@@ -20,6 +20,8 @@ Gem::Specification.new do |spec|
     "lib/safe_image/imagemagick_policy/policy.xml",
     "lib/safe_image/fonts/DejaVuSans.ttf",
     "lib/safe_image/fonts/DEJAVU-LICENSE",
+    "vendor/svg-hush/svg-hush-*",
+    "vendor/svg-hush/THIRD-PARTY-LICENSES.txt",
     "LICENSE",
     "README.md",
     "SECURITY.md",

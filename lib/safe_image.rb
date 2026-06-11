@@ -39,8 +39,7 @@ require_relative "safe_image/zygote"
 require_relative "safe_image/path_safety"
 require_relative "safe_image/optimizer"
 require_relative "safe_image/svg_metadata"
-require_relative "safe_image/svg_css"
-require_relative "safe_image/svg_sanitizer"
+require_relative "safe_image/svg_hush"
 require_relative "safe_image/remote"
 require_relative "safe_image/ico"
 require_relative "safe_image/image_magick_backend"
@@ -379,13 +378,11 @@ module SafeImage
     maybe_sandbox(:optimize_image!, args: args, kwargs: kwargs) { DiscourseCompat.optimize_image!(*args, **kwargs) }
   end
 
-  def sanitize_svg!(*args, **kwargs)
-    # Validate the required id_namespace in the parent (after the configured
-    # check) so omitting/malformed values raise ArgumentError consistently —
-    # otherwise, under the sandbox, the worker raises and it surfaces as a
-    # sandbox CommandError instead of the documented ArgumentError.
+  # Produces document-safe SVG (safe as an <img>/CSS-url/file) via the bundled
+  # svg-hush filter. config gates the sandbox posture; SvgHush execs the binary
+  # through Runner, which applies Landlock itself when configure!(landlock: true).
+  def sanitize_svg!(path, max_pixels: nil)
     config
-    SvgSanitizer.resolve_namespace(kwargs.fetch(:id_namespace, SvgSanitizer::NAMESPACE_REQUIRED))
-    maybe_sandbox(:sanitize_svg!, args: args, kwargs: kwargs) { SvgSanitizer.sanitize!(*args, **kwargs) }
+    SvgHush.sanitize!(path, max_pixels: max_pixels)
   end
 end

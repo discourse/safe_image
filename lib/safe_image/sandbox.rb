@@ -18,7 +18,6 @@ module SafeImage
     OPERATIONS = %w[
       probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
       convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
-      sanitize_svg!
     ].freeze
 
     def available?
@@ -36,7 +35,9 @@ module SafeImage
         *argv.map(&:to_s),
         read: existing_paths([*Landlock::SafeExec.default_read_paths, *runtime_read_paths, *read]),
         write: existing_paths(write),
-        execute: existing_paths([*Landlock::SafeExec.default_execute_paths, File.dirname(RbConfig.ruby)]),
+        # Grant execute on the command's own directory too, so a gem-bundled
+        # binary (e.g. vendor/svg-hush) outside the system bin dirs can run.
+        execute: existing_paths([*Landlock::SafeExec.default_execute_paths, File.dirname(RbConfig.ruby), File.dirname(argv.first.to_s)]),
         env: env.merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
         inherit_env: false,
         timeout: timeout,
@@ -81,8 +82,7 @@ module SafeImage
         {
           operation: operation,
           # JSON has no symbol type; wrap symbol values so the worker can restore
-          # them (e.g. id_namespace: :standalone must not arrive as the string
-          # "standalone", which resolve_namespace would treat as a real namespace).
+          # them rather than receiving a string an operation might treat differently.
           request: deep_encode_symbols(request),
           # The worker is a fresh process and must be configured like the
           # parent — minus landlock, since it already runs inside the sandbox.
@@ -110,7 +110,7 @@ module SafeImage
         operation = payload.fetch(:operation).to_s
         allowed_operations = %w[
           probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
-          convert_favicon_to_png frame_count animated? letter_avatar optimize_image! sanitize_svg!
+          convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
         ]
         raise ArgumentError, "unsupported sandbox operation: #{operation}" unless allowed_operations.include?(operation)
 
@@ -230,7 +230,7 @@ module SafeImage
       end
 
       # In-place mutators need write permission for an existing input path too.
-      if %w[optimize optimize_image! sanitize_svg! fix_orientation].include?(operation.to_s)
+      if %w[optimize optimize_image! fix_orientation].include?(operation.to_s)
         first = Array(request[:args]).first
         if first.is_a?(String) && File.exist?(first)
           expanded = File.expand_path(first)
