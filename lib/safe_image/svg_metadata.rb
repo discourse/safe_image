@@ -99,7 +99,7 @@ module SafeImage
       size = File.size(path)
       raise LimitError, "SVG exceeds #{max_bytes} bytes" if size > max_bytes
 
-      xml = File.binread(path, max_bytes + 1)
+      xml = File.binread(path, max_bytes + 1) || "".b
       raise LimitError, "SVG exceeds #{max_bytes} bytes" if xml.bytesize > max_bytes
       reject_unsafe_xml!(xml)
       xml

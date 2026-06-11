@@ -17,4 +17,12 @@ Rake::TestTask.new(:test) do |t|
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
+namespace :fuzz do
+  desc "Run deterministic SVG fuzz tests. Tune with SAFE_IMAGE_FUZZ_SEEDS and *_FUZZ_* env vars."
+  Rake::TestTask.new(:svg) do |t|
+    t.libs << "test"
+    t.test_files = FileList["test/svg_*fuzz_test.rb"]
+  end
+end
+
 task default: :test

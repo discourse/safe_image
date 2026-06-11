@@ -22,6 +22,12 @@ module SafeImage
       assert_equal 1, info.orientation
     end
 
+    def test_rejects_empty_svg_file
+      svg = write_tmp("empty.svg", "")
+      assert_raises(InvalidImageError) { SafeImage.size(svg) }
+      assert_raises(InvalidImageError) { SafeImage.sanitize_svg!(svg, id_namespace: :standalone) }
+    end
+
     def test_derives_dimensions_from_viewbox
       svg = write_tmp("viewbox.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33.2 44.1"></svg>')
       assert_equal [34, 45], SafeImage.size(svg)

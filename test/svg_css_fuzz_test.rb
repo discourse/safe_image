@@ -11,8 +11,8 @@ module SafeImage
   # must hold for ALL inputs, across several fixed seeds so the run is
   # deterministic in CI.
   class SvgCssFuzzTest < TestCase
-    SEEDS = [1, 42, 1337, 2024].freeze
-    ITERATIONS = 1500
+    SEEDS = ENV.fetch("SAFE_IMAGE_FUZZ_SEEDS", "1,42,1337,2024").split(",").map { |seed| Integer(seed) }.freeze
+    ITERATIONS = Integer(ENV.fetch("SAFE_IMAGE_CSS_FUZZ_ITERATIONS", ENV.fetch("SAFE_IMAGE_FUZZ_ITERATIONS", "1500")))
 
     # Garbage stream: attack syntax concatenated without separators. Almost
     # everything here is (correctly) rejected; this stresses the reject path

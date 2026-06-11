@@ -48,6 +48,22 @@ module SafeImage
       assert_includes cleaned, "&amp;xss;", "failed to escape entity in text"
     end
 
+    def test_strips_event_handlers_from_prefixed_svg_elements
+      path = write_tmp("prefixed-events.svg", <<~SVG)
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/2000/svg" xmlns:y="http://www.w3.org/2000/svg" width="100" height="100">
+          <x:svg onload="alert(document.domain)" y:onload="1"/>
+        </svg>
+      SVG
+
+      SafeImage.sanitize_svg!(path, id_namespace: :standalone)
+      cleaned = File.read(path)
+
+      assert_includes cleaned, "<x:svg", "dropped the safe prefixed SVG element"
+      refute_includes cleaned, "onload", "kept a namespaced or duplicate event handler"
+      refute_includes cleaned, "xmlns:y", "kept an unused attacker namespace declaration"
+      assert REXML::Document.new(cleaned), "sanitized SVG is not well-formed XML"
+    end
+
     def test_strips_entity_encoded_external_urls
       path = write_tmp("encoded-url.svg", <<~SVG)
         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">

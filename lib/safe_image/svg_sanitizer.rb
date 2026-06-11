@@ -34,6 +34,9 @@ module SafeImage
       writing-mode direction
     ].freeze
 
+    SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+    XLINK_NAMESPACE = "http://www.w3.org/1999/xlink"
+
     # Caller namespace tokens must already be valid id/class idents so the
     # prefixed ids and the scope class are well-formed; rejected, not coerced,
     # so two distinct tokens can never collapse to one.
@@ -89,7 +92,10 @@ module SafeImage
       end
       doc = SvgMetadata.parse(path.to_s)
 
-      root = sanitize_element!(doc.root.deep_clone, namespace)
+      root = doc.root.deep_clone
+      raise InvalidImageError, "SVG root required" unless allowed_element?(root)
+
+      root = sanitize_element!(root, namespace)
       if namespace
         neutralize_root_overflow!(root)
         apply_scope_class!(root, namespace) if contains_style?(root)
@@ -111,10 +117,12 @@ module SafeImage
       element.children.to_a.each do |child|
         case child
         when REXML::Element
-          if child.name == "style"
-            sanitize_style_element!(child, namespace)
-          elsif ALLOWED_ELEMENTS.include?(child.name)
-            sanitize_element!(child, namespace)
+          if allowed_element?(child)
+            if child.name == "style"
+              sanitize_style_element!(child, namespace)
+            else
+              sanitize_element!(child, namespace)
+            end
           else
             child.remove
           end
@@ -129,31 +137,42 @@ module SafeImage
 
       # style is the one attribute whose value is CSS: it is rewritten to the
       # sanitized subset (or dropped) rather than kept verbatim, before the
-      # allowlist pass below sees it.
-      if (style = element.attributes["style"])
-        sanitized_style = SvgCss.sanitize_declarations(style, namespace: namespace)
+      # allowlist pass below sees it. Iterate exact Attribute objects instead of
+      # using Element#delete_attribute: REXML indexes attributes by local name,
+      # and prefixed+unprefixed duplicates (for example onload/y:onload) can make
+      # name-based deletion miss the actual unsafe attribute.
+      style_updates = []
+      style_deletes = []
+      element.attributes.each_attribute do |attr|
+        next unless attr.expanded_name == "style"
+
+        sanitized_style = SvgCss.sanitize_declarations(attr.value.to_s, namespace: namespace)
         if sanitized_style
-          element.add_attribute("style", sanitized_style)
+          style_updates << sanitized_style
         else
-          element.delete_attribute("style")
+          style_deletes << attr
         end
       end
+      style_deletes.each { |attr| delete_attribute!(attr) }
+      style_updates.each { |sanitized_style| element.add_attribute("style", sanitized_style) }
 
       attributes_to_delete = []
       element.attributes.each_attribute do |attr|
-        name = attr.name.to_s
-        value = attr.value.to_s
-        allowed = ALLOWED_ATTRIBUTES.include?(name) || name.start_with?("aria-")
-        if !allowed || name.downcase.start_with?("on") || dangerous_value?(value)
-          attributes_to_delete << name
+        next if namespace_declaration?(attr)
+
+        if !allowed_attribute?(attr) || event_attribute?(attr) || dangerous_value?(attr.value) || invalid_href?(attr)
+          attributes_to_delete << attr
         end
       end
-      attributes_to_delete.each { |name| element.delete_attribute(name) }
+      attributes_to_delete.each { |attr| delete_attribute!(attr) }
 
-      %w[href xlink:href].each do |href|
-        next unless element.attributes[href]
-        element.delete_attribute(href) unless element.attributes[href].to_s.start_with?("#")
+      namespace_attributes_to_delete = []
+      element.attributes.each_attribute do |attr|
+        next unless namespace_declaration?(attr)
+
+        namespace_attributes_to_delete << attr unless allowed_namespace_declaration?(element, attr)
       end
+      namespace_attributes_to_delete.each { |attr| delete_attribute!(attr) }
 
       namespace_references!(element, namespace) if namespace
       element
@@ -171,10 +190,68 @@ module SafeImage
       end
 
       element.children.to_a.each(&:remove)
-      attribute_names = []
-      element.attributes.each_attribute { |attr| attribute_names << attr.expanded_name }
-      attribute_names.each { |name| element.delete_attribute(name) }
+      attributes_to_delete = []
+      element.attributes.each_attribute { |attr| attributes_to_delete << attr }
+      attributes_to_delete.each { |attr| delete_attribute!(attr) }
       element.add_text(sanitized)
+    end
+
+    def allowed_element?(element)
+      namespace = element.namespace.to_s
+      ALLOWED_ELEMENTS.include?(element.name.to_s) && (namespace.empty? || namespace == SVG_NAMESPACE)
+    end
+
+    def allowed_attribute?(attr)
+      return true if href_attribute?(attr)
+      return false unless attr.prefix.to_s.empty?
+
+      name = attr.expanded_name.to_s
+      ALLOWED_ATTRIBUTES.include?(name) || name.start_with?("aria-")
+    end
+
+    def namespace_declaration?(attr)
+      attr.expanded_name == "xmlns" || attr.prefix.to_s == "xmlns"
+    end
+
+    def allowed_namespace_declaration?(element, attr)
+      value = attr.value.to_s
+      return value.empty? || value == SVG_NAMESPACE if attr.expanded_name == "xmlns"
+      return false unless attr.prefix.to_s == "xmlns"
+
+      prefix = attr.name.to_s
+      (value == SVG_NAMESPACE && svg_prefix_used?(element, prefix)) ||
+        (prefix == "xlink" && value == XLINK_NAMESPACE && xlink_prefix_used?(element))
+    end
+
+    def svg_prefix_used?(element, prefix)
+      return true if element.prefix.to_s == prefix && element.namespace.to_s == SVG_NAMESPACE
+
+      element.children.any? { |child| child.is_a?(REXML::Element) && svg_prefix_used?(child, prefix) }
+    end
+
+    def xlink_prefix_used?(element)
+      element.attributes.each_attribute do |attr|
+        return true if attr.expanded_name == "xlink:href" && attr.namespace.to_s == XLINK_NAMESPACE
+      end
+
+      element.children.any? { |child| child.is_a?(REXML::Element) && xlink_prefix_used?(child) }
+    end
+
+    def event_attribute?(attr)
+      attr.name.to_s.downcase.start_with?("on")
+    end
+
+    def href_attribute?(attr)
+      name = attr.expanded_name.to_s
+      name == "href" || (name == "xlink:href" && attr.namespace.to_s == XLINK_NAMESPACE)
+    end
+
+    def invalid_href?(attr)
+      href_attribute?(attr) && !attr.value.to_s.start_with?("#")
+    end
+
+    def delete_attribute!(attr)
+      attr.element&.attributes&.delete(attr)
     end
 
     # Prefixes this element's own id and every same-document reference it makes
@@ -201,7 +278,7 @@ module SafeImage
       # (possibly prefixed) name so we never synthesize a duplicate plain href.
       href_rewrites = []
       element.attributes.each_attribute do |attr|
-        next unless attr.name == "href"
+        next unless href_attribute?(attr)
         value = attr.value.to_s
         next unless value.start_with?("#")
         href_rewrites << [attr.expanded_name, "##{SvgCss.apply_namespace(namespace, value[1..])}"]
@@ -217,7 +294,7 @@ module SafeImage
 
       rewrites = []
       element.attributes.each_attribute do |attr|
-        name = attr.name.to_s
+        name = attr.expanded_name.to_s
         next if name == "style"
         value = attr.value.to_s
         next unless value.match?(/url\(/i)
@@ -270,13 +347,16 @@ module SafeImage
     # it) and the root clip bounds them all. Standalone output is untouched — an
     # <img>/CSS-url resource is already clipped by its own element box.
     def neutralize_root_overflow!(root)
-      root.delete_attribute("overflow")
-      style = root.attributes["style"]
+      overflow_attrs = []
+      root.attributes.each_attribute { |attr| overflow_attrs << attr if attr.expanded_name == "overflow" }
+      overflow_attrs.each { |attr| delete_attribute!(attr) }
+
+      style = root.attributes.get_attribute("style")
       return unless style
 
-      kept = style.split(";").reject { |declaration| declaration.start_with?("overflow:") }
+      kept = style.value.to_s.split(";").reject { |declaration| declaration.start_with?("overflow:") }
       if kept.empty?
-        root.delete_attribute("style")
+        delete_attribute!(style)
       else
         root.add_attribute("style", kept.join(";"))
       end
