@@ -215,7 +215,7 @@ module SafeImage
 
     def allowed_namespace_declaration?(element, attr)
       value = attr.value.to_s
-      return value.empty? || value == SVG_NAMESPACE if attr.expanded_name == "xmlns"
+      return value == SVG_NAMESPACE if attr.expanded_name == "xmlns"
       return false unless attr.prefix.to_s == "xmlns"
 
       prefix = attr.name.to_s
