@@ -25,7 +25,7 @@ module SafeImage
         </svg>
       SVG
 
-      assert_includes out, "xlink:href='#u1-safe'", "safe lowercase xlink fragment was lost"
+      assert_includes out, 'xlink:href="#u1-safe"', "safe lowercase xlink fragment was lost"
       refute_match(/hReF|XLINK:href|javascript|alert/, out, "mixed-case href bypass survived")
     end
 
@@ -38,7 +38,7 @@ module SafeImage
         </svg>
       SVG
 
-      assert_includes out, "href='#u1-safe'", "safe plain href fragment was lost"
+      assert_includes out, 'href="#u1-safe"', "safe plain href fragment was lost"
       refute_match(/xl:href|xlink:href|javascript|evil/i, out, "namespace alias/rebinding href bypass survived")
     end
 
@@ -108,7 +108,7 @@ module SafeImage
         </svg>
       SVG
 
-      assert_includes out, "fill='url(#safe)'", "safe fragment paint server was lost"
+      assert_includes out, 'fill="url(#safe)"', "safe fragment paint server was lost"
       refute_match(/<xi:include\b|file:|<filter\b|<feImage\b|<image\b|169\.254|evil\.example/i, out,
                    "XInclude/renderer external resource survived")
       assert_no_active_or_fetching_attribute_values(out)
@@ -251,7 +251,7 @@ module SafeImage
         </svg>
       SVG
 
-      assert_includes out, "<symbol id='u1-s'", "legitimate symbol definition was dropped"
+      assert_includes out, '<symbol id="u1-s"', "legitimate symbol definition was dropped"
       assert_equal 2, out.scan(/<use\b/).length, "legitimate use references were dropped"
     end
 

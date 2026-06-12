@@ -42,7 +42,7 @@ module SafeImage
       refute_includes cleaned, "<!--", "kept comment"
       refute_includes cleaned, "CDATA", "kept CDATA section"
 
-      assert cleaned.include?("href='#safe'") || cleaned.include?('href="#safe"'), "stripped fragment href"
+      assert cleaned.include?('href="#safe"') || cleaned.include?('href="#safe"'), "stripped fragment href"
       assert_includes cleaned, "url(#safe)", "stripped fragment url"
       assert_includes cleaned, "&lt;script&gt;", "failed to escape text content"
       assert_includes cleaned, "&amp;xss;", "failed to escape entity in text"
@@ -58,10 +58,16 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: :standalone)
       cleaned = File.read(path)
 
-      assert_includes cleaned, "<x:svg", "dropped the safe prefixed SVG element"
+      # The x: prefix is bound to the SVG namespace, so <x:svg> and <svg> are the
+      # same element; the allowlist-rebuild emits it in the canonical unprefixed
+      # form. The security property is that the element survives as an
+      # SVG-namespaced node with no event handlers and no attacker namespace.
+      doc = REXML::Document.new(cleaned)
+      inner = doc.root.elements.to_a.find { |e| e.name == "svg" }
+      assert inner, "dropped the safe (SVG-namespaced) inner element"
+      assert_equal SvgSanitizer::SVG_NAMESPACE, inner.namespace.to_s, "inner element lost its SVG namespace"
       refute_includes cleaned, "onload", "kept a namespaced or duplicate event handler"
       refute_includes cleaned, "xmlns:y", "kept an unused attacker namespace declaration"
-      assert REXML::Document.new(cleaned), "sanitized SVG is not well-formed XML"
     end
 
     def test_strips_entity_encoded_external_urls
@@ -93,7 +99,7 @@ module SafeImage
       cleaned = File.read(path)
 
       assert_includes cleaned, "fill:#ff0000;stroke:none", "lost benign style declarations"
-      assert_includes cleaned, "style='fill:url(#grad)'", "lost fragment paint reference"
+      assert_includes cleaned, 'style="fill:url(#grad)"', "lost fragment paint reference"
       assert_includes cleaned, "font-size:12px", "lost declaration following a dropped one"
       refute_includes cleaned, "evil.example", "kept external URL from style"
       refute_includes cleaned, "\\", "kept CSS escape"
@@ -186,10 +192,10 @@ module SafeImage
       cleaned = File.read(path)
 
       assert_includes cleaned, "<marker", "dropped marker element"
-      assert_includes cleaned, "marker-end='url(#arrow)'", "dropped fragment marker reference"
-      assert_includes cleaned, "stroke-dasharray='6,3'", "dropped dash pattern"
-      assert_includes cleaned, "vector-effect='non-scaling-stroke'", "dropped vector-effect"
-      assert_includes cleaned, "fill='url(#g)'", "dropped gradient paint reference"
+      assert_includes cleaned, 'marker-end="url(#arrow)"', "dropped fragment marker reference"
+      assert_includes cleaned, 'stroke-dasharray="6,3"', "dropped dash pattern"
+      assert_includes cleaned, 'vector-effect="non-scaling-stroke"', "dropped vector-effect"
+      assert_includes cleaned, 'fill="url(#g)"', "dropped gradient paint reference"
       refute_includes cleaned, "sodipodi", "kept editor namespace cruft"
       refute_includes cleaned, "inkscape:", "kept editor namespace cruft"
       refute_includes cleaned, "namedview", "kept editor-only element"
@@ -226,7 +232,7 @@ module SafeImage
       cleaned = File.read(path)
 
       assert_includes cleaned, "<marker", "dropped marker element"
-      assert_includes cleaned, "marker-end='url(#a)'", "dropped fragment marker reference"
+      assert_includes cleaned, 'marker-end="url(#a)"', "dropped fragment marker reference"
       refute_includes cleaned, "evil.example", "kept external marker reference"
     end
 
@@ -256,13 +262,13 @@ module SafeImage
       cleaned = File.read(path)
 
       # definitions and every reference move together
-      assert_includes cleaned, "id='up42-grad'", "gradient id not namespaced"
-      assert_includes cleaned, "fill='url(#up42-grad)'", "fill ref not namespaced"
+      assert_includes cleaned, 'id="up42-grad"', "gradient id not namespaced"
+      assert_includes cleaned, 'fill="url(#up42-grad)"', "fill ref not namespaced"
       assert_includes cleaned, "stroke:url(#up42-grad)", "style-attr ref not namespaced"
-      assert_includes cleaned, "id='up42-header'", "element id not namespaced"
-      assert_includes cleaned, "href='#up42-header'", "use ref not namespaced"
+      assert_includes cleaned, 'id="up42-header"', "element id not namespaced"
+      assert_includes cleaned, 'href="#up42-header"', "use ref not namespaced"
       # host-affecting selectors are confined under the root scope class
-      assert_includes cleaned, "class='up42-scope'", "root missing scope class"
+      assert_includes cleaned, 'class="up42-scope"', "root missing scope class"
       assert_includes cleaned, ".up42-scope *{visibility:hidden}", "universal selector not scoped"
       assert_includes cleaned, ".up42-scope #up42-header{display:none}", "id selector not scoped/namespaced"
       # nothing references the bare, host-colliding names anymore
@@ -283,9 +289,9 @@ module SafeImage
       cleaned = File.read(path)
 
       # every reference form is namespaced (and canonicalised to unquoted lowercase)
-      assert_includes cleaned, "fill='url(#u1-g)'", "uppercase URL() not namespaced"
-      assert_includes cleaned, "clip-path='url(#u1-c)'", "single-quoted url not namespaced"
-      assert_includes cleaned, "marker-end='url(#u1-arrow)'", "double-quoted url not namespaced"
+      assert_includes cleaned, 'fill="url(#u1-g)"', "uppercase URL() not namespaced"
+      assert_includes cleaned, 'clip-path="url(#u1-c)"', "single-quoted url not namespaced"
+      assert_includes cleaned, 'marker-end="url(#u1-arrow)"', "double-quoted url not namespaced"
       # no bare reference survives
       refute_match(/url\(\s*['"]?#(?!u1-)/i, cleaned, "a bare fragment reference survived")
     end
@@ -306,7 +312,7 @@ module SafeImage
       cleaned = File.read(path)
 
       refute_includes cleaned, "evil.example", "kept an unterminated external URL"
-      assert_includes cleaned, "fill='url(#u1-g)'", "dropped the one valid reference"
+      assert_includes cleaned, 'fill="url(#u1-g)"', "dropped the one valid reference"
       # no url( introducer survives except the complete, namespaced fragment form
       refute_match(/url\s*\(\s*['"]?#(?!u1-)/i, cleaned, "a bare/unnamespaced fragment survived")
       refute_match(/url\s*\(\s*['"]?[^#]/i, cleaned, "a non-fragment url( survived")
@@ -324,13 +330,13 @@ module SafeImage
       cleaned = File.read(path)
 
       # every class token in every class attribute is namespaced (no bare token)
-      cleaned.scan(/class='([^']*)'/).flatten.each do |attr|
+      cleaned.scan(/class="([^"]*)"/).flatten.each do |attr|
         attr.split.each do |token|
           assert token.start_with?("u1-"), "bare class token #{token.inspect} survived"
         end
       end
-      assert_includes cleaned, "class='u1-modal u1-fixed u1-scope'", "root classes not namespaced"
-      assert_includes cleaned, "class='u1-st0 u1-btn-danger u1-active'", "element classes not namespaced"
+      assert_includes cleaned, 'class="u1-modal u1-fixed u1-scope"', "root classes not namespaced"
+      assert_includes cleaned, 'class="u1-st0 u1-btn-danger u1-active"', "element classes not namespaced"
       # internal class styling still matches: selector classes are prefixed the same way
       assert_includes cleaned, ".u1-scope .u1-st0{fill:red}", "class selector not namespaced to match"
       assert_includes cleaned, ".u1-scope .u1-st0.u1-active{stroke:blue}", "compound class selector not namespaced"
@@ -350,7 +356,7 @@ module SafeImage
       refute_match(/var\s*\(/i, cleaned, "var() survived")
       refute_match(/env\s*\(/i, cleaned, "env() survived")
       refute_match(/attr\s*\(/i, cleaned, "attr() survived")
-      assert_includes cleaned, "fill='#0a0'", "dropped a safe presentation attribute"
+      assert_includes cleaned, 'fill="#0a0"', "dropped a safe presentation attribute"
       assert_includes cleaned, "stroke:#00f", "dropped the safe half of a style declaration"
     end
 
@@ -366,11 +372,11 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: "u1")
       cleaned = File.read(path)
 
-      assert_includes cleaned, "id='u1-shape'", "definition id not namespaced"
-      assert_includes cleaned, "xlink:href='#u1-shape'", "xlink:href not namespaced"
+      assert_includes cleaned, 'id="u1-shape"', "definition id not namespaced"
+      assert_includes cleaned, 'xlink:href="#u1-shape"', "xlink:href not namespaced"
       # the xlink:href <use> must not gain a synthesized plain href
-      assert_equal 1, cleaned.scan("xlink:href='#u1-shape'").length
-      assert_equal 1, cleaned.scan(/(?<!:)href='#u1-shape'/).length, "an extra plain href was synthesized"
+      assert_equal 1, cleaned.scan('xlink:href="#u1-shape"').length
+      assert_equal 1, cleaned.scan(/(?<!:)href="#u1-shape"/).length, "an extra plain href was synthesized"
     end
 
     def test_namespaces_aria_idref_references
@@ -385,10 +391,10 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: "u1")
       cleaned = File.read(path)
 
-      assert_includes cleaned, "aria-labelledby='u1-header u1-title'", "IDREFS list not namespaced"
-      assert_includes cleaned, "aria-describedby='u1-desc'", "single IDREF not namespaced"
-      assert_includes cleaned, "aria-controls='u1-a u1-b'", "IDREFS not namespaced"
-      assert_includes cleaned, "aria-label='plain text'", "free-text aria attribute was mangled"
+      assert_includes cleaned, 'aria-labelledby="u1-header u1-title"', "IDREFS list not namespaced"
+      assert_includes cleaned, 'aria-describedby="u1-desc"', "single IDREF not namespaced"
+      assert_includes cleaned, 'aria-controls="u1-a u1-b"', "IDREFS not namespaced"
+      assert_includes cleaned, 'aria-label="plain text"', "free-text aria attribute was mangled"
       # every token in every aria IDREF attribute is namespaced
       %w[aria-labelledby aria-describedby aria-controls].each do |aria|
         cleaned[/#{aria}='([^']*)'/, 1].to_s.split.each do |ref|
@@ -407,8 +413,8 @@ module SafeImage
 
       SafeImage.sanitize_svg!(path, id_namespace: :standalone)
       cleaned = File.read(path)
-      assert_includes cleaned, "id='title'", "standalone namespaced an id"
-      assert_includes cleaned, "aria-labelledby='title'", "standalone namespaced an aria reference"
+      assert_includes cleaned, 'id="title"', "standalone namespaced an id"
+      assert_includes cleaned, 'aria-labelledby="title"', "standalone namespaced an aria reference"
     end
 
     def test_inline_mode_clips_root_overflow
@@ -425,7 +431,7 @@ module SafeImage
       root_open = out[/<svg[^>]*>/]
       refute_match(/overflow/, root_open, "root overflow not neutralized in inline mode")
       assert_match(/fill:red/, root_open, "other root style declarations were lost")
-      assert_includes out, "<marker id='u1-m' style='overflow:visible'", "inner overflow was stripped"
+      assert_includes out, '<marker id="u1-m" style="overflow:visible"', "inner overflow was stripped"
 
       standalone = write_tmp("ov-standalone.svg", svg)
       SafeImage.sanitize_svg!(standalone, id_namespace: :standalone)
@@ -469,8 +475,8 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: :standalone)
       cleaned = File.read(path)
 
-      assert_includes cleaned, "id='g'", "id was namespaced without id_namespace"
-      assert_includes cleaned, "fill='url(#g)'", "ref was namespaced without id_namespace"
+      assert_includes cleaned, 'id="g"', "id was namespaced without id_namespace"
+      assert_includes cleaned, 'fill="url(#g)"', "ref was namespaced without id_namespace"
       refute_includes cleaned, "-scope", "scope class added without id_namespace"
     end
 

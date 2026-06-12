@@ -112,9 +112,15 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: :standalone)
 
       assert_equal once, File.read(path), "svg-hush namespace case is not idempotent"
-      assert_includes once, "<svg:rect", "dropped SVG element using svg: prefix"
-      assert_includes once, "<vector:rect", "dropped SVG element using alternate SVG prefix"
-      assert_includes once, "<svg:text", "dropped prefixed SVG text element"
+      # svg:, vector:, and the default prefix are all bound to the SVG namespace,
+      # so those elements are the same as <rect>/<text>; the allowlist-rebuild
+      # emits them in canonical unprefixed form. Assert the elements survive by
+      # local name rather than prefix spelling.
+      root = REXML::Document.new(once).root
+      names = []
+      root.each_recursive { |e| names << e.name }
+      assert_equal 3, names.count("rect"), "dropped an SVG rect (prefixed or not)"
+      assert_includes names, "text", "dropped prefixed SVG text element"
       assert_includes once, "Hallo World", "lost text content from prefixed text element"
       refute_includes once, "xml:space", "kept non-allowlisted xml:space attribute"
     end
@@ -150,7 +156,7 @@ module SafeImage
         tag = sanitize_single_element(%(<rect fill="#{value}"/>), id_namespace: "u1", name: "paint-url-#{index}.svg")
 
         if expected_fragment
-          assert_includes tag, "fill='url(##{expected_fragment})'", "lost safe fragment reference #{value.inspect}"
+          assert_includes tag, "fill=\"url(##{expected_fragment})\"", "lost safe fragment reference #{value.inspect}"
         else
           refute_match(/\bfill=/, tag, "kept non-fragment url() paint value #{value.inspect}")
         end
@@ -163,7 +169,7 @@ module SafeImage
         tag = sanitize_single_element(%(<use href="#{xml_attr(href)}"/>), id_namespace: "u1", name: "href-url-#{index}.svg")
 
         if expected_fragment
-          assert_includes tag, "href='##{expected_fragment}'", "lost safe fragment href #{href.inspect}"
+          assert_includes tag, "href=\"##{expected_fragment}\"", "lost safe fragment href #{href.inspect}"
         else
           refute_match(/\bhref=/, tag, "kept non-fragment href #{href.inspect}")
         end
@@ -181,7 +187,7 @@ module SafeImage
         </svg>
       SVG
 
-      assert_includes out, "xlink:href='#u1-safe'", "lost safe xlink fragment"
+      assert_includes out, 'xlink:href="#u1-safe"', "lost safe xlink fragment"
       refute_match(/javascript|data:image|defs\.svg|icon-1/i, out, "kept unsafe xlink href")
       refute_match(/xlink:href='(?!#u1-safe)/, out, "kept a non-fragment xlink href")
     end
@@ -272,11 +278,13 @@ module SafeImage
                    out, "kept non-allowlisted attribute/namespace or active payload")
       refute_match(/\bhref='\//, out, "kept root-relative href from svg-hush corpus")
       refute_match(/marker-start|url\(http|url\(\//i, out, "kept unsafe marker/url reference from svg-hush corpus")
-      assert_includes out, "style='fill:red'", "dropped safe declaration before escaped @import"
-      assert_includes out, "marker-end='url(#u1-ok)'", "dropped safe marker fragment while removing unsafe neighbors"
+      assert_includes out, 'style="fill:red"', "dropped safe declaration before escaped @import"
+      assert_includes out, 'marker-end="url(#u1-ok)"', "dropped safe marker fragment while removing unsafe neighbors"
       assert_includes out, "<line", "dropped safe line after removing event handlers"
-      assert_includes out, "<s:line", "dropped safe SVG element using alternate prefix"
-      assert_includes out, "class='u1-eye'", "did not namespace surviving class token"
+      # The s:-prefixed line is SVG-namespaced, so it is emitted canonically as
+      # <line>; assert the final s:line (x1="1") survived rather than its prefix.
+      assert_match(/<line[^>]*x1="1"/, out, "dropped safe SVG element using alternate prefix")
+      assert_includes out, 'class="u1-eye"', "did not namespace surviving class token"
     end
 
     def test_svg_hush_doctype_and_processing_instruction_vectors_are_rejected

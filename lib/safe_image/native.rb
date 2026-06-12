@@ -45,17 +45,18 @@ module SafeImage
         out_format = output_format!(format)
 
         VipsGlue.with_images do |track|
-          # Header read through the explicit loader: validates the bytes and
-          # enforces the pixel cap before any full decode.
-          header, input_format = load_image(track, input)
-          check_pixels!(header, max_pixels)
+          # Route through the explicit loader for the path's extension and keep
+          # the resulting image object for the resize. Do not call the generic
+          # filename-based `thumbnail` operation here: it re-sniffs the path and
+          # can observe different bytes if a hostile local path is replaced
+          # between the header check and the decode.
+          image, input_format = load_image(track, input, autorotate: true)
+          check_pixels!(image, max_pixels)
 
-          # Thumbnail from the file so libvips can shrink on load (e.g.
-          # libjpeg DCT downscaling); auto-rotates by default.
           thumb = track.call(
             VipsGlue.operation(
-              "thumbnail",
-              { filename: input, width: width, height: height,
+              "thumbnail_image",
+              { in: image, width: width, height: height,
                 size: "both", crop: "centre", fail_on: "error" }
             )
           )

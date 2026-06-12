@@ -121,7 +121,7 @@ module SafeImage
       SafeImage.sanitize_svg!(svg, id_namespace: :standalone)
       cleaned = File.read(svg)
 
-      assert_includes cleaned, "id='g'", "standalone produced a namespaced id through the sandbox"
+      assert_includes cleaned, 'id="g"', "standalone produced a namespaced id through the sandbox"
       assert_includes cleaned, "url(#g)", "standalone namespaced a reference through the sandbox"
       refute_includes cleaned, "standalone-", "the :standalone symbol leaked as a namespace"
     end
@@ -148,7 +148,7 @@ module SafeImage
       SafeImage.sanitize_svg!(svg, id_namespace: "u1")
       cleaned = File.read(svg)
 
-      assert_includes cleaned, "id='u1-g'", "string namespace not applied through the sandbox"
+      assert_includes cleaned, 'id="u1-g"', "string namespace not applied through the sandbox"
       assert_includes cleaned, "url(#u1-g)", "reference not namespaced through the sandbox"
     end
 

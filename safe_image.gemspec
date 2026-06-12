@@ -30,6 +30,7 @@ Gem::Specification.new do |spec|
   # libvips is bound at runtime through Fiddle (stdlib today, a bundled gem
   # from Ruby 3.5); nothing compiles at install time.
   spec.add_runtime_dependency "fiddle", ">= 1.0"
+  spec.add_runtime_dependency "nokogiri", "~> 1.16"
   spec.add_runtime_dependency "rexml", "~> 3.4"
 
   spec.add_development_dependency "minitest", "~> 5.25"
