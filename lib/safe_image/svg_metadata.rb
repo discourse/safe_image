@@ -97,33 +97,6 @@ module SafeImage
       validate_dimensions!(width, height, max_pixels: max_pixels)
     end
 
-    # Builds the full REXML tree. Used only by the SVG sanitizer, which needs to
-    # walk and rewrite the document; metadata reads go through the DOM-free
-    # streaming path above. The streaming validation runs first so a document
-    # that breaches the structural caps is rejected before the tree is built.
-    def parse(path, max_bytes: MAX_SVG_BYTES)
-      parse_with_attributes(path, max_bytes: max_bytes).first
-    end
-
-    # Like parse, but returns [doc, root_attributes] from a single read+scan so
-    # the sanitizer can validate dimensions off the same scan instead of reading
-    # and scanning the file a second time. The streaming cap validation still
-    # runs first, before the DOM is built.
-    def parse_with_attributes(path, max_bytes: MAX_SVG_BYTES)
-      require_rexml
-      xml = read_svg(path, max_bytes: max_bytes)
-      _name, attributes = scan_svg!(xml)
-      doc = REXML::Document.new(xml)
-      raise InvalidImageError, "SVG root required" unless doc.root&.name == "svg"
-
-      [doc, attributes]
-    # ArgumentError: REXML resolves the declared encoding with Encoding.find,
-    # which raises it bare on names it doesn't know; untrusted input must stay
-    # inside our error hierarchy.
-    rescue REXML::ParseException, ArgumentError => e
-      raise InvalidImageError, "invalid SVG: #{e.message}"
-    end
-
     def read_svg(path, max_bytes: MAX_SVG_BYTES)
       path = safe_svg_path(path)
       size = File.size(path)
@@ -143,10 +116,10 @@ module SafeImage
 
     def reject_unsafe_xml!(xml)
       # The DOCTYPE/PI scans below are ASCII byte regexes; they only see what
-      # they expect when the bytes we scan decode to the same markup REXML
-      # parses. That holds for UTF-8 and single-byte ASCII-transparent charsets
-      # but not for UTF-16/32 or multi-byte/transforming encodings, so reject
-      # those first.
+      # they expect when the bytes we scan decode to the same markup the XML
+      # parser sees. That holds for UTF-8 and single-byte ASCII-transparent
+      # charsets but not for UTF-16/32 or multi-byte/transforming encodings, so
+      # reject those first.
       reject_unsafe_encoding!(xml)
       raise InvalidImageError, "doctype is not allowed in SVG" if xml.match?(/<!DOCTYPE/i)
       raise InvalidImageError, "XML processing instructions are not allowed in SVG" if xml.match?(/<\?(?!xml\s)/i)
@@ -155,8 +128,9 @@ module SafeImage
     def reject_unsafe_encoding!(xml)
       bytes = xml.b
       # UTF-16/UTF-32 interleave NUL bytes between ASCII characters, hiding
-      # "<!DOCTYPE" from the ASCII scans while REXML still decodes and honours
-      # it. (NUL is invalid in XML 1.0 regardless, so this also rejects garbage.)
+      # "<!DOCTYPE" from the ASCII scans while the XML parser still decodes and
+      # honours it. (NUL is invalid in XML 1.0 regardless, so this also rejects
+      # garbage.)
       if NON_UTF8_BOMS.any? { |bom| bytes.start_with?(bom) } || bytes.include?("\x00".b)
         raise InvalidImageError, "SVG must use a single-byte or UTF-8 encoding"
       end
@@ -212,54 +186,103 @@ module SafeImage
       [width.ceil, height.ceil]
     end
 
-    # Streams the document with a pull parser, enforcing the structural caps as
-    # events arrive, so a hostile "millions of tiny elements" document is
-    # rejected at the cap without ever retaining the multi-million-object DOM
-    # that a parse-then-validate approach would build first. Returns the root
-    # element's name and its attributes hash.
+    # Streams the document with a SAX parser, enforcing the structural caps as
+    # events arrive (see cap_scanner_class), so a hostile "millions of tiny
+    # elements" document is rejected at the cap without ever retaining the
+    # multi-million-object DOM a parse-then-validate approach would build.
+    # Returns the root element's local name and a localname=>value hash of its
+    # attributes, matching the contract dimensions_from_attributes consumes.
+    #
+    # SAX does NOT raise on malformed XML even with recovery disabled — it
+    # reports through the error callback and keeps going — so well-formedness is
+    # enforced by recording any reported error and rejecting after the parse.
+    # This reproduces the old REXML pull-parser's reject set (unclosed/mismatched
+    # tags, trailing junk) and is strictly stricter on multiple root elements,
+    # which is a safe direction for a gate.
     def scan_svg!(xml)
-      require_rexml
-      parser = REXML::Parsers::PullParser.new(xml)
-      depth = -1
-      elements = 0
-      attributes = 0
-      root_name = nil
-      root_attributes = nil
-
-      while parser.has_next?
-        event = parser.pull
-        if event.start_element?
-          depth += 1
-          raise LimitError, "SVG nesting exceeds #{MAX_SVG_DEPTH}" if depth > MAX_SVG_DEPTH
-
-          elements += 1
-          raise LimitError, "SVG has too many elements" if elements > MAX_SVG_ELEMENTS
-
-          attributes += event[1].size
-          raise LimitError, "SVG has too many attributes" if attributes > MAX_SVG_ATTRIBUTES
-
-          if root_name.nil?
-            root_name = event[0]
-            root_attributes = event[1]
-          end
-        elsif event.end_element?
-          depth -= 1
-        end
+      require_nokogiri
+      handler = cap_scanner_class.new
+      parser = Nokogiri::XML::SAX::Parser.new(handler)
+      begin
+        # recovery: false — do not silently repair malformed markup. Errors still
+        # arrive via the error callback rather than as exceptions, so they are
+        # checked explicitly below.
+        parser.parse(xml) { |ctx| ctx.recovery = false }
+      rescue LimitError, InvalidImageError
+        raise # our own cap/validation rejections, surfaced from a callback
+      rescue StandardError => e
+        # Nokogiri rejects some inputs by raising rather than via the error
+        # callback (e.g. empty input -> "input string cannot be empty"). Keep
+        # untrusted-input failures inside our error hierarchy.
+        raise InvalidImageError, "invalid SVG: #{e.message}"
       end
 
-      raise InvalidImageError, "SVG root required" unless root_name == "svg"
-      [root_name, root_attributes]
-    # ArgumentError: same REXML encoding-lookup mapping as in parse above.
-    rescue REXML::ParseException, ArgumentError => e
-      raise InvalidImageError, "invalid SVG: #{e.message}"
+      raise InvalidImageError, "invalid SVG: #{handler.parse_error}" if handler.parse_error
+      raise InvalidImageError, "SVG root required" unless handler.root_name == "svg"
+
+      [handler.root_name, handler.root_attributes]
     end
 
-    # Loaded on first SVG use, not at file load: rexml costs ~27ms to parse,
-    # which every non-SVG operation — and every sandbox worker boot — would
-    # otherwise pay.
-    def require_rexml
-      require "rexml/document"
-      require "rexml/parsers/pullparser"
+    # Loaded on first SVG use, not at file load: keeping the XML library off the
+    # hot path of every non-SVG operation (and every sandbox worker boot) where
+    # it would otherwise be paid for nothing.
+    def require_nokogiri
+      require "nokogiri"
+    end
+
+    # The SAX cap-enforcement handler, built lazily and memoised the first time
+    # an SVG is scanned. It subclasses Nokogiri::XML::SAX::Document, so it cannot
+    # be declared at file-load time without forcing nokogiri to load eagerly and
+    # defeating the lazy require above. A breached cap raises LimitError straight
+    # out of a callback; libxml2 propagates it at the next event boundary, so the
+    # parse aborts promptly rather than scanning to the end (verified: rejection
+    # time grows far slower than input size).
+    def cap_scanner_class
+      @cap_scanner_class ||= Class.new(Nokogiri::XML::SAX::Document) do
+        attr_reader :root_name, :root_attributes, :parse_error
+
+        def initialize
+          super
+          @depth = -1
+          @elements = 0
+          @attributes = 0
+          @root_name = nil
+          @root_attributes = nil
+          @parse_error = nil
+        end
+
+        # attrs: array of Nokogiri::XML::SAX::Parser::Attribute (localname/value),
+        # NOT including namespace declarations; `ns` carries the xmlns decls. Both
+        # count toward the attribute cap so the bound cannot be sidestepped by
+        # spraying namespace declarations.
+        def start_element_namespace(name, attrs = [], _prefix = nil, _uri = nil, ns = [])
+          @depth += 1
+          raise LimitError, "SVG nesting exceeds #{MAX_SVG_DEPTH}" if @depth > MAX_SVG_DEPTH
+
+          @elements += 1
+          raise LimitError, "SVG has too many elements" if @elements > MAX_SVG_ELEMENTS
+
+          @attributes += attrs.length + ns.length
+          raise LimitError, "SVG has too many attributes" if @attributes > MAX_SVG_ATTRIBUTES
+
+          return unless @root_name.nil?
+
+          @root_name = name
+          @root_attributes = attrs.each_with_object({}) { |attr, hash| hash[attr.localname] = attr.value }
+        end
+
+        def end_element_namespace(_name, _prefix = nil, _uri = nil)
+          @depth -= 1
+        end
+
+        # libxml2 reports well-formedness violations here rather than raising;
+        # record the first so scan_svg! can reject on it.
+        def error(message)
+          @parse_error ||= message.to_s.strip
+        end
+
+        def warning(_message); end
+      end
     end
   end
 end

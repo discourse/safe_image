@@ -93,6 +93,30 @@ module SafeImage
                       "rejecting the element bomb allocated #{allocated} objects; the scan should abort before building the DOM"
     end
 
+    # The SAX cap-scan enforces the element cap by raising out of a parse
+    # callback; libxml2 must propagate that at the next event boundary so the
+    # parse aborts *early*, not after scanning the whole buffer. A regression
+    # here (e.g. a libxml2 that buffers before propagating) would silently turn
+    # the gate into a DoS sink, so assert the abort is bounded: a document with
+    # 100x the element cap must reject having allocated far less than a full
+    # parse of it would. scan_svg! is driven directly so the byte cap that bounds
+    # the public entry points does not mask the property under test.
+    def test_element_cap_aborts_sax_parse_early
+      far_over_cap = SvgMetadata::MAX_SVG_ELEMENTS * 100
+      xml = %(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">) +
+            ("<g/>" * far_over_cap) + "</svg>"
+
+      GC.start
+      before = GC.stat(:total_allocated_objects)
+      assert_raises(LimitError) { SvgMetadata.scan_svg!(xml) }
+      allocated = GC.stat(:total_allocated_objects) - before
+
+      # A full SAX walk of far_over_cap elements would allocate on the order of
+      # the element count; aborting at the 10k cap must stay far below that.
+      assert_operator allocated, :<, far_over_cap,
+                      "rejecting a #{far_over_cap}-element bomb allocated #{allocated} objects; the SAX parse did not abort early at the cap"
+    end
+
     def test_rejects_svg_content_without_svg_extension
       txt = write_tmp("not-svg.txt", '<svg width="1" height="1"></svg>')
       assert_raises(UnsupportedFormatError) { SafeImage.size(txt) }

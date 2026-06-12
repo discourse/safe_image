@@ -31,8 +31,12 @@ Gem::Specification.new do |spec|
   # from Ruby 3.5); nothing compiles at install time.
   spec.add_runtime_dependency "fiddle", ">= 1.0"
   spec.add_runtime_dependency "nokogiri", "~> 1.16"
-  spec.add_runtime_dependency "rexml", "~> 3.4"
 
+  # Test-only: the SVG sanitizer/metadata code uses Nokogiri at runtime, but the
+  # test suite parses sanitized output with REXML as a neutral, independent
+  # second parser (the differential oracle and structural assertions). Declared
+  # here so the suite keeps working once REXML leaves Ruby's default gems.
+  spec.add_development_dependency "rexml", "~> 3.4"
   spec.add_development_dependency "minitest", "~> 5.25"
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rubocop-discourse", "~> 3.18"

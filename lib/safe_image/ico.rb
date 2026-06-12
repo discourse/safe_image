@@ -3,7 +3,7 @@
 require "tempfile"
 
 module SafeImage
-  # Pure-Ruby ICO container support, in the spirit of the REXML SVG path:
+  # Pure-Ruby ICO container support, in the spirit of the SVG metadata path:
   # the directory and legacy DIB payloads are parsed in memory-safe Ruby with
   # explicit bounds checks, and pixel encoding is delegated to the hardened
   # native libvips helpers. ImageMagick is never involved.
