@@ -20,12 +20,15 @@ Gem::Specification.new do |spec|
     "lib/safe_image/imagemagick_policy/policy.xml",
     "lib/safe_image/fonts/DejaVuSans.ttf",
     "lib/safe_image/fonts/DEJAVU-LICENSE",
+    "ext/safe_image_vips_helper/extconf.rb",
+    "ext/safe_image_vips_helper/safe_image_vips_helper.c",
     "LICENSE",
     "README.md",
     "SECURITY.md",
     "CHANGELOG.md"
   ]
   spec.require_paths = ["lib"]
+  spec.extensions = ["ext/safe_image_vips_helper/extconf.rb"]
 
   # libvips is bound at runtime through Fiddle (stdlib today, a bundled gem
   # from Ruby 3.5); nothing compiles at install time.
@@ -42,7 +45,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rubocop-discourse", "~> 3.18"
   # Exercises the Landlock sandbox tests (they skip when unavailable);
   # intentionally NOT a runtime dependency — see README.
-  spec.add_development_dependency "landlock"
+  spec.add_development_dependency "landlock", ">= 0.3"
 
   spec.metadata = {
     "homepage_uri" => spec.homepage,

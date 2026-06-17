@@ -12,12 +12,12 @@ mandatory call:
 SafeImage.configure!(backend: :vips, landlock: true)
 ```
 
-The `:vips` backend uses a tiny Fiddle binding that drives `libvips` directly
-— pure Ruby, nothing compiles at install time. The `:imagemagick` backend
-runs ImageMagick with shell-free command execution and a restrictive bundled
-policy. There are no per-call backend choices and no silent fallback from one
-backend to the other: you pick the decoder for untrusted bytes in one place
-and every operation uses it.
+The `:vips` backend uses a tiny compiled helper for Landlock-contained
+subprocess execution plus a Fiddle binding for inline Ruby execution. The
+`:imagemagick` backend runs ImageMagick with shell-free command execution and a
+restrictive bundled policy. There are no per-call backend choices and no silent
+fallback from one backend to the other: you pick the decoder for untrusted bytes
+in one place and every operation uses it.
 
 The premise is that hostile image bytes are a lousy thing to spread across
 model callbacks, upload helpers, optimizer wrappers, and hand-built command
@@ -26,13 +26,14 @@ choke point instead.
 
 ## Install
 
-Nothing compiles at install time: libvips is bound at runtime through Fiddle
-(`libvips.so.42` is dlopened when `configure!(backend: :vips)` runs;
-`SAFE_IMAGE_LIBVIPS` overrides the library name authoritatively). libvips'
-GLib warnings about rejected input (e.g. "Not a PNG file") are silenced —
-failures surface as exceptions instead; set `SAFE_IMAGE_VIPS_WARNINGS=1` to
-restore them for debugging. Install the runtime
-[dependencies](#dependencies) below.
+A small native helper is compiled at gem install time and linked against
+libvips; install the libvips development package (`pkg-config vips` must work)
+in the build environment. At runtime, the inline `:vips` path still dlopens
+`libvips.so.42` through Fiddle when `configure!(backend: :vips)` runs;
+`SAFE_IMAGE_LIBVIPS` overrides that library name authoritatively. libvips' GLib
+warnings about rejected input (e.g. "Not a PNG file") are silenced — failures
+surface as exceptions instead; set `SAFE_IMAGE_VIPS_WARNINGS=1` to restore them
+for debugging. Install the runtime [dependencies](#dependencies) below.
 
 ```bash
 gem build safe_image.gemspec
@@ -137,18 +138,19 @@ sudo pacman -S --needed libvips \
 
 | Dependency | Kind | Needed for | Without it |
 | --- | --- | --- | --- |
-| `libvips` runtime library (`libvips.so.42`; Debian: `libvips42` ≥ 8.13) | required for `backend: :vips` | the fast path for every operation, bound via Fiddle | `configure!(backend: :vips)` raises at boot; configure `backend: :imagemagick` instead |
+| `libvips` runtime library (`libvips.so.42`; Debian: `libvips42` ≥ 8.13) plus development headers/pkg-config at gem build time | required for `backend: :vips` | the fast path for every operation and the compiled Landlock helper | gem install fails without headers; `configure!(backend: :vips)` raises at boot if the runtime library is unavailable |
 | ImageMagick (`magick`/`convert`, `identify`) | required for `backend: :imagemagick` | every operation on the `:imagemagick` backend | `configure!(backend: :imagemagick)` raises at boot |
 | `jpegoptim` | required for JPEG `optimize` | lossless JPEG optimisation and metadata stripping | JPEG `optimize` raises in strict mode |
 | `oxipng` | required for PNG `optimize` | lossless PNG optimisation | PNG `optimize` raises in strict mode |
 | `pngquant` | optional | lossy PNG quantisation (`optimize_mode: :lossy`, files < 500KB) | lossy mode silently skips the quantisation pass |
 | `jpegtran` (libjpeg-turbo) | optional | lossless tier of `fix_orientation`; uprighting EXIF-oriented JPEGs in `optimize` | `fix_orientation` falls back to the libvips re-encode tier; `optimize` of an oriented JPEG raises in strict mode (left untouched otherwise) |
 | `cjpegli` (libjxl) | optional | higher-quality encoding of generated JPEGs on the `:vips` backend — used automatically when installed | generated JPEGs use the backend's own encoder |
-| `landlock` gem (Linux kernel ≥ 5.13) | required for `landlock: true` | the atomic sandbox around every operation | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
+| `landlock` gem ≥ 0.3 (Linux kernel ≥ 5.13) | required for `landlock: true` | the atomic sandbox around every operation, including fast direct command capture | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
 | `rexml` gem | automatic | SVG sanitising and SVG metadata | installed as a gem dependency |
 
-The `landlock` gem is intentionally **not** a gem dependency; add it to the
-host application's Gemfile if you want sandboxing.
+The `landlock` gem is intentionally **not** a runtime gem dependency; add
+`gem "landlock", ">= 0.3"` to the host application's Gemfile if you want
+sandboxing.
 
 ### libvips build capabilities
 
@@ -970,40 +972,19 @@ by Ruby, libvips, ImageMagick, and optimizer tools. Worker processes inherit the
 parent's backend and pixel-ceiling configuration; landlock is forced off
 inside the worker so sandboxed operations never nest.
 
-Operations are served by a pool of resident **zygote** workers: each is a
-fresh Ruby process that boots the gem once and then forks a child per
-operation, so the ~85ms boot cost (Ruby + requires + libvips init) is paid
-once per burst instead of per call — a warm sandboxed operation costs ~3–8ms
-over the unsandboxed one. The pool grows on demand to
-`SAFE_IMAGE_ZYGOTE_WORKERS` (default 8), so N threads run N sandboxed
-operations concurrently (throughput scales near-linearly with cores until the
-work itself saturates the CPU); offered concurrency past the cap blocks until
-a worker frees, which also bounds how many libvips decodes run at once.
-Idling is cheap (~16MB private memory per worker, zero CPU), so a worker
-lingers for `Zygote::IDLE_SECONDS` (300) without work before exiting on its
-own; the next operation boots a new one. Workers also exit immediately when
-their parent process does, and `configure!` always retires the pool.
-
-A zygote itself never touches untrusted bytes: each forked child first
-applies rlimits, its per-operation Landlock policy (filesystem allowlist, all
-TCP denied on Landlock ABI ≥ 4, abstract-unix-socket/signal scopes on
-ABI ≥ 6), and — when the installed `landlock` gem exposes
-`seccomp_deny_network!` — the helper's deny-all-network seccomp filter (which
-blocks sockets of every family, closing the non-TCP/UDP gap the in-process
-Landlock policy alone leaves open), and only then runs the operation. Forking
-is sound because the zygote never runs operations itself — libvips is
-initialised but quiescent (no native threads) at every fork.
-
-`SAFE_IMAGE_ZYGOTE=0` falls back to the exec-per-operation worker (a fresh
-sandboxed Ruby per call through the Landlock helper binary, whose seccomp
-filter denies sockets of every family, no pool); `SAFE_IMAGE_ZYGOTE_WORKERS`
-and `SAFE_IMAGE_ZYGOTE_IDLE_SECONDS` tune the pool cap and idle window.
+For the `:vips` backend, common raster operations are served by the compiled
+`safe_image_vips_helper` executable under `Landlock.exec`. The parent performs
+Ruby-level path validation and builds a per-call filesystem policy; the helper
+then initializes libvips, applies the same loader/operation allowlist and pixel
+cap as the inline Fiddle path, writes a structured JSON response, and exits.
+Operations outside that native surface fall back to a fresh sandboxed Ruby
+worker per call.
 
 ## Development
 
 ```bash
 bundle install
-bundle exec rake          # run the tests (nothing compiles)
+bundle exec rake          # run the tests (builds/uses the native vips helper)
 docker/run.sh             # run the suite on Debian bookworm's packaged libvips 8.14
 bundle exec rubocop       # lint
 ```

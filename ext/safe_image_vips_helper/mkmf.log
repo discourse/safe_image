@@ -1,0 +1,41 @@
+pkg_config: checking for pkg-config for vips... -------------------- ["-I/usr/include/webp -I/usr/include/librsvg-2.0 -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/glycin-2 -I/usr/include/cairo -I/usr/include/libxml2 -I/usr/include/pango-1.0 -I/usr/include/libmount -I/usr/include/blkid -I/usr/include/fribidi -I/usr/include/harfbuzz -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/sysprof-6 -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/pixman-1 -I/usr/include/OpenEXR -I/usr/include/Imath -I/usr/include/openjpeg-2.5 -pthread -D_FILE_OFFSET_BITS=64 -DHWY_SHARED_DEFINE", "", "-lvips -lgio-2.0 -lgobject-2.0 -lglib-2.0"]
+
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 pkg-config --exists vips
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 pkg-config --libs vips |
+=> "-lvips -lgio-2.0 -lgobject-2.0 -lglib-2.0\n"
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 "gcc -o conftest -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0/x86_64-linux -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0/ruby/backward -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0 -I.    -fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2  -O3 -fno-fast-math -ggdb3 -Wall -Wextra -Wdeprecated-declarations -Wdiv-by-zero -Wduplicated-cond -Wimplicit-function-declaration -Wimplicit-int -Wpointer-arith -Wwrite-strings -Wold-style-definition -Wimplicit-fallthrough=0 -Wmissing-noreturn -Wno-cast-function-type -Wno-constant-logical-operand -Wno-long-long -Wno-missing-field-initializers -Wno-overlength-strings -Wno-packed-bitfield-compat -Wno-parentheses-equality -Wno-self-assign -Wno-tautological-compare -Wno-unused-parameter -Wno-unused-value -Wsuggest-attribute=format -Wsuggest-attribute=noreturn -Wunused-variable -Wmisleading-indentation -Wundef conftest.c -L. -L/home/sam/.rubies/ruby-3.4.7/lib -Wl,-rpath,/home/sam/.rubies/ruby-3.4.7/lib -L. -fstack-protector-strong -rdynamic -Wl,-export-dynamic     -Wl,-rpath,/home/sam/.rubies/ruby-3.4.7/lib -L/home/sam/.rubies/ruby-3.4.7/lib -lruby-static -lz -lrt -lrt -lgmp -ldl -lcrypt -lm -lpthread   -lm -lpthread  -lc"
+checked program was:
+/* begin */
+1: #include "ruby.h"
+2: 
+3: int main(int argc, char **argv)
+4: {
+5:   return !!argv[argc];
+6: }
+/* end */
+
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 "gcc -o conftest -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0/x86_64-linux -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0/ruby/backward -I/home/sam/.rubies/ruby-3.4.7/include/ruby-3.4.0 -I.    -fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2  -O3 -fno-fast-math -ggdb3 -Wall -Wextra -Wdeprecated-declarations -Wdiv-by-zero -Wduplicated-cond -Wimplicit-function-declaration -Wimplicit-int -Wpointer-arith -Wwrite-strings -Wold-style-definition -Wimplicit-fallthrough=0 -Wmissing-noreturn -Wno-cast-function-type -Wno-constant-logical-operand -Wno-long-long -Wno-missing-field-initializers -Wno-overlength-strings -Wno-packed-bitfield-compat -Wno-parentheses-equality -Wno-self-assign -Wno-tautological-compare -Wno-unused-parameter -Wno-unused-value -Wsuggest-attribute=format -Wsuggest-attribute=noreturn -Wunused-variable -Wmisleading-indentation -Wundef conftest.c -L. -L/home/sam/.rubies/ruby-3.4.7/lib -Wl,-rpath,/home/sam/.rubies/ruby-3.4.7/lib -L. -fstack-protector-strong -rdynamic -Wl,-export-dynamic -lvips -lgio-2.0 -lgobject-2.0 -lglib-2.0    -Wl,-rpath,/home/sam/.rubies/ruby-3.4.7/lib -L/home/sam/.rubies/ruby-3.4.7/lib -lruby-static -lz -lrt -lrt -lgmp -ldl -lcrypt -lm -lpthread   -lm -lpthread  -lc"
+checked program was:
+/* begin */
+1: #include "ruby.h"
+2: 
+3: int main(int argc, char **argv)
+4: {
+5:   return !!argv[argc];
+6: }
+/* end */
+
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 pkg-config --cflags-only-I vips |
+=> "-I/usr/include/webp -I/usr/include/librsvg-2.0 -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/glycin-2 -I/usr/include/cairo -I/usr/include/libxml2 -I/usr/include/pango-1.0 -I/usr/include/libmount -I/usr/include/blkid -I/usr/include/fribidi -I/usr/include/harfbuzz -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/sysprof-6 -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/pixman-1 -I/usr/include/OpenEXR -I/usr/include/Imath -I/usr/include/openjpeg-2.5\n"
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 pkg-config --cflags-only-other vips |
+=> "-pthread -D_FILE_OFFSET_BITS=64 -DHWY_SHARED_DEFINE\n"
+LD_LIBRARY_PATH=.:/home/sam/.rubies/ruby-3.4.7/lib ASAN_OPTIONS=detect_leaks=0 pkg-config --libs-only-l vips |
+=> "-lvips -lgio-2.0 -lgobject-2.0 -lglib-2.0\n"
+package configuration for vips
+incflags: -I/usr/include/webp -I/usr/include/librsvg-2.0 -I/usr/include/gdk-pixbuf-2.0 -I/usr/include/glycin-2 -I/usr/include/cairo -I/usr/include/libxml2 -I/usr/include/pango-1.0 -I/usr/include/libmount -I/usr/include/blkid -I/usr/include/fribidi -I/usr/include/harfbuzz -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/sysprof-6 -I/usr/include/freetype2 -I/usr/include/libpng16 -I/usr/include/pixman-1 -I/usr/include/OpenEXR -I/usr/include/Imath -I/usr/include/openjpeg-2.5
+cflags: -pthread -D_FILE_OFFSET_BITS=64 -DHWY_SHARED_DEFINE
+ldflags: 
+libs: -lvips -lgio-2.0 -lgobject-2.0 -lglib-2.0
+
+--------------------
+

@@ -32,10 +32,10 @@ module SafeImage
 end
 
 require_relative "safe_image/native"
+require_relative "safe_image/native_helper"
 require_relative "safe_image/result"
 require_relative "safe_image/runner"
 require_relative "safe_image/sandbox"
-require_relative "safe_image/zygote"
 require_relative "safe_image/path_safety"
 require_relative "safe_image/optimizer"
 require_relative "safe_image/svg_metadata"
@@ -87,10 +87,9 @@ module SafeImage
     if landlock && !Sandbox.available?
       raise Error, "landlock: true requested but the Landlock sandbox is unavailable on this host"
     end
-
-    # The zygote bakes the backend and max_pixels in at boot; a reconfigure
-    # must not serve from a stale one.
-    Zygote.shutdown!
+    if landlock && backend == :vips
+      NativeHelper.ensure_available!
+    end
 
     @config = Config.new(backend: backend, landlock: landlock, max_pixels: max_pixels)
   end

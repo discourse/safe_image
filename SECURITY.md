@@ -16,7 +16,7 @@ Safe Image assumes image input may be attacker-controlled. The library is design
 - explicit libvips loader selection for supported raster formats, with
   libvips' untrusted-operation block enabled and the ImageMagick loader
   classes blocked by name
-- a runtime libvips binding (Fiddle) that exposes only the specific
+- a runtime libvips binding (Fiddle) and compiled Landlock helper that expose only the specific
   operations the gem invokes — there is no generic operation access
 - no silent fallback from libvips to generic ImageMagick decoding; the
   backend is a single explicit `SafeImage.configure!` decision and formats it

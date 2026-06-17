@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "rbconfig"
 require "tmpdir"
@@ -23,22 +24,78 @@ module SafeImage
 
     def available?
       require "landlock"
-      Landlock::SafeExec.supported?
+      landlock_supported?
     rescue LoadError
       false
+    end
+
+    def landlock_supported?
+      if defined?(Landlock::SafeExec)
+        Landlock::SafeExec.supported?
+      else
+        Landlock.supported?
+      end
+    end
+
+    def landlock_command_error
+      if defined?(Landlock::SafeExec::CommandError)
+        Landlock::SafeExec::CommandError
+      else
+        Landlock::CommandError
+      end
+    end
+
+    def landlock_abi
+      Landlock.respond_to?(:abi_version) ? Landlock.abi_version : 0
+    end
+
+    def default_read_paths
+      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:default_read_paths)
+        Landlock::SafeExec.default_read_paths
+      else
+        %w[/usr /lib /lib64 /etc /bin /sbin /opt].select { |path| File.exist?(path) }
+      end
+    end
+
+    def default_execute_paths
+      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:default_execute_paths)
+        Landlock::SafeExec.default_execute_paths
+      else
+        %w[/usr /lib /lib64 /bin /sbin /opt].select { |path| File.exist?(path) }
+      end
+    end
+
+    def landlock_capture!(argv, **options)
+      if defined?(Landlock::SafeExec)
+        inherit_env = options.delete(:unsetenv_others)
+        options[:inherit_env] = !inherit_env unless inherit_env.nil?
+        Landlock::SafeExec.capture!(*argv.map(&:to_s), **options)
+      else
+        Landlock.capture!(argv.map(&:to_s), allow_all_known: true, **options)
+      end
+    end
+
+    def landlock_exec(argv, **options)
+      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:exec)
+        inherit_env = options.delete(:unsetenv_others)
+        options[:inherit_env] = !inherit_env unless inherit_env.nil?
+        Landlock::SafeExec.exec(*argv.map(&:to_s), **options)
+      else
+        Landlock.exec(argv.map(&:to_s), allow_all_known: true, **options)
+      end
     end
 
     def capture_command!(argv, read:, write:, timeout: Runner::DEFAULT_TIMEOUT, env: nil, rlimits: DEFAULT_RLIMITS)
       require "landlock"
       env ||= Runner.command_env(Dir.tmpdir)
 
-      result = Landlock::SafeExec.capture!(
-        *argv.map(&:to_s),
-        read: existing_paths([*Landlock::SafeExec.default_read_paths, *runtime_read_paths, *read]),
+      result = landlock_capture!(
+        argv,
+        read: existing_paths([*default_read_paths, *runtime_read_paths, *read]),
         write: existing_paths(write),
-        execute: existing_paths([*Landlock::SafeExec.default_execute_paths, File.dirname(RbConfig.ruby)]),
+        execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
         env: env.merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
-        inherit_env: false,
+        unsetenv_others: true,
         timeout: timeout,
         rlimits: rlimits,
         seccomp_deny_network: true,
@@ -48,7 +105,7 @@ module SafeImage
       [result.stdout, result.stderr]
     rescue LoadError
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
-    rescue Landlock::SafeExec::CommandError => e
+    rescue landlock_command_error => e
       raise CommandError.new(
         "sandboxed command failed: #{failure_detail(e)}",
         command: argv,
@@ -62,13 +119,111 @@ module SafeImage
       operation = operation.to_s
       raise ArgumentError, "unsupported sandbox operation: #{operation}" unless OPERATIONS.include?(operation)
       request = { args: args, kwargs: kwargs }
-      result =
-        if Zygote.enabled?
-          Zygote.call!(operation, request)
-        else
-          run_worker!(operation, request)
-        end
+      if SafeImage.config.backend == :vips && native_helper_operation?(operation, request)
+        result = native_helper_public_call!(operation, request)
+      else
+        result = run_worker!(operation, request)
+      end
       operation == "type" && result ? result.to_sym : result
+    end
+
+    def native_helper_operation?(operation, request)
+      return false if operation == "thumbnail" && request[:kwargs]&.fetch(:optimize, false)
+      return false unless %w[probe type size dimensions info orientation dominant_color frame_count animated? thumbnail].include?(operation)
+
+      path = request[:kwargs]&.fetch(:input, nil) || Array(request[:args]).first
+      return true if operation == "thumbnail"
+      return false unless path.is_a?(String)
+
+      ext = File.extname(PathSafety.local_path(path)).delete_prefix(".").downcase
+      ext = "jpg" if ext == "jpeg"
+      %w[jpg png gif webp heic heif avif jxl].include?(ext)
+    rescue Error, ArgumentError
+      false
+    end
+
+    def native_helper_public_call!(operation, request)
+      kwargs = request[:kwargs] || {}
+      args = request[:args] || []
+      max_pixels = SafeImage.resolved_max_pixels(kwargs[:max_pixels])
+
+      case operation
+      when "probe"
+        result_from_helper_probe(args.fetch(0), max_pixels)
+      when "type"
+        SafeImage.fastimage_type(result_from_helper_probe(args.fetch(0), max_pixels).input_format)
+      when "size", "dimensions"
+        result = result_from_helper_probe(args.fetch(0), max_pixels)
+        [result.width, result.height]
+      when "info"
+        result = result_from_helper_probe(args.fetch(0), max_pixels)
+        Info.new(
+          path: result.input,
+          type: SafeImage.fastimage_type(result.input_format),
+          width: result.width,
+          height: result.height,
+          size: [result.width, result.height],
+          animated: kwargs[:animated] ? NativeHelper.pages(result.input, max_pixels).to_i > 1 : nil,
+          orientation: kwargs[:orientation] ? NativeHelper.orientation(result.input, max_pixels) : nil
+        )
+      when "orientation"
+        NativeHelper.orientation(PathSafety.ensure_regular_file!(args.fetch(0)).to_s, max_pixels)
+      when "dominant_color"
+        NativeHelper.dominant_color(PathSafety.ensure_regular_file!(args.fetch(0)).to_s, max_pixels)
+      when "frame_count"
+        NativeHelper.pages(PathSafety.ensure_regular_file!(args.fetch(0)).to_s, max_pixels)
+      when "animated?"
+        NativeHelper.pages(PathSafety.ensure_regular_file!(args.fetch(0)).to_s, max_pixels).to_i > 1
+      when "thumbnail"
+        native_helper_thumbnail!(kwargs, max_pixels)
+      else
+        raise ArgumentError, "unsupported native helper operation: #{operation}"
+      end
+    end
+
+    def result_from_helper_probe(path, max_pixels)
+      input = PathSafety.ensure_regular_file!(path).to_s
+      info = NativeHelper.probe(input, max_pixels)
+      Result.new(
+        input: input,
+        output: nil,
+        input_format: info.fetch(:input_format),
+        output_format: nil,
+        width: info.fetch(:width),
+        height: info.fetch(:height),
+        filesize: File.size(input),
+        backend: "libvips-helper",
+        duration_ms: info.fetch(:duration_ms),
+        optimizer: nil
+      )
+    end
+
+    def native_helper_thumbnail!(kwargs, max_pixels)
+      input = PathSafety.ensure_regular_file!(kwargs.fetch(:input)).to_s
+      output = PathSafety.ensure_safe_output_path!(kwargs.fetch(:output)).to_s
+      width = Integer(kwargs.fetch(:width))
+      height = Integer(kwargs.fetch(:height))
+      quality = Integer(kwargs.fetch(:quality, 85))
+      format = (kwargs[:format] || File.extname(output).delete_prefix(".")).to_s.downcase
+      format = "jpg" if format == "jpeg"
+      FileUtils.mkdir_p(File.dirname(output))
+      info = NativeHelper.thumbnail(input, output, width, height, format, quality, max_pixels)
+      opt_info = nil
+      if kwargs[:optimize] && Processor::OPTIMIZABLE_OUTPUTS.include?(format)
+        opt_info = Optimizer.optimize(output, mode: kwargs.fetch(:optimize_mode, :lossless), strip_metadata: true, quality: format == "jpg" ? quality : nil, assume_upright: true)
+      end
+      Result.new(
+        input: input,
+        output: output,
+        input_format: info.fetch(:input_format),
+        output_format: info.fetch(:output_format),
+        width: info.fetch(:width),
+        height: info.fetch(:height),
+        filesize: File.size(output),
+        backend: "libvips-helper",
+        duration_ms: info.fetch(:duration_ms),
+        optimizer: opt_info&.fetch(:tools, nil)
+      )
     end
 
     def run_worker!(operation, request)
@@ -145,18 +300,20 @@ module SafeImage
           "RUBYLIB" => $LOAD_PATH.select { |p| p && File.directory?(p) }.join(File::PATH_SEPARATOR)
         )
 
-        stdout, = Landlock::SafeExec.capture!(
-          RbConfig.ruby,
-          "-I#{File.expand_path("../../", __dir__)}",
-          "-rjson",
-          "-e",
-          code,
-          payload,
-          read: existing_paths([*Landlock::SafeExec.default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir]),
+        stdout, = landlock_capture!(
+          [
+            RbConfig.ruby,
+            "-I#{File.expand_path("../../", __dir__)}",
+            "-rjson",
+            "-e",
+            code,
+            payload
+          ],
+          read: existing_paths([*default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir]),
           write: existing_paths([*paths.fetch(:write), tmpdir]),
-          execute: existing_paths([*Landlock::SafeExec.default_execute_paths, File.dirname(RbConfig.ruby)]),
+          execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
           env: worker_env,
-          inherit_env: false,
+          unsetenv_others: true,
           timeout: Runner::DEFAULT_TIMEOUT,
           rlimits: DEFAULT_RLIMITS,
           seccomp_deny_network: true,
@@ -167,7 +324,7 @@ module SafeImage
       end
     rescue LoadError
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
-    rescue Landlock::SafeExec::CommandError => e
+    rescue landlock_command_error => e
       raise CommandError.new(
         "sandboxed worker failed: #{failure_detail(e)}",
         command: [RbConfig.ruby, "-e", "..."],

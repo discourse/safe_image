@@ -4,11 +4,11 @@ Guidance for AI coding agents working in this repository. CLAUDE.md is a symlink
 
 ## Commands
 
-- `bundle exec rake` — run all tests. Nothing compiles: the libvips binding (`lib/safe_image/vips_glue.rb`) is pure Ruby via Fiddle and dlopens `libvips.so.42` when `SafeImage.configure!(backend: :vips)` runs.
+- `bundle exec rake` — run all tests. The gem now builds a small native `safe_image_vips_helper` executable at install/build time for Landlock-contained libvips operations; the inline libvips binding (`lib/safe_image/vips_glue.rb`) remains pure Ruby via Fiddle.
 - Single file: `bundle exec rake test TEST=test/svg_sanitizer_test.rb`
 - Single test: add `TESTOPTS="--name=/pattern/"`
 - Lint: `bundle exec rubocop` (inherits rubocop-discourse; CI runs this)
-- `docker/run.sh` — runs the suite in a Debian bookworm container against the oldest supported packaged libvips (8.14) with no toolchain, validating the no-compile install.
+- `docker/run.sh` — runs the suite in a Debian bookworm container against the oldest supported packaged libvips (8.14), including native-helper build/install validation.
 - Tests shell out to real tools: the libvips runtime library, `magick`, `jpegoptim`, `pngquant`, `oxipng` are required; `cjpegli`, HEIC delegates, and Landlock are optional — tests for them skip when missing.
 
 ## Workflow rules

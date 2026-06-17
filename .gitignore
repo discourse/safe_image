@@ -6,3 +6,6 @@
 /.bundle/
 /vendor/bundle/
 Gemfile.lock
+/lib/safe_image/safe_image_vips_helper
+/ext/safe_image_vips_helper/Makefile
+/ext/safe_image_vips_helper/safe_image_vips_helper
