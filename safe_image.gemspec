@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.version = SafeImage::VERSION
   spec.summary = "Hardened image processing boundary for untrusted uploads"
   spec.description =
-    "Safe Image is a small Ruby image-processing boundary for untrusted uploads: direct libvips thumbnails/probing, hardened ImageMagick compatibility operations, optimisation, SVG sanitising, and optional atomic Landlock sandbox execution."
+    "Safe Image is a small Ruby image-processing boundary for untrusted uploads: direct libvips thumbnails/probing, hardened ImageMagick compatibility operations, optimisation, SVG metadata probing, and optional atomic Landlock sandbox execution."
   spec.homepage = "https://github.com/sam-saffron-jarvis/safe-image"
   spec.license = "MIT"
   spec.authors = ["Sam Saffron", "Jarvis"]
@@ -35,13 +35,9 @@ Gem::Specification.new do |spec|
   # libvips is bound at runtime through Fiddle (stdlib today, a bundled gem
   # from Ruby 3.5); nothing compiles at install time.
   spec.add_runtime_dependency "fiddle", ">= 1.0"
+  # SVG metadata uses Nokogiri's SAX parser, loaded lazily on first SVG use.
   spec.add_runtime_dependency "nokogiri", "~> 1.16"
 
-  # Test-only: the SVG sanitizer/metadata code uses Nokogiri at runtime, but the
-  # test suite parses sanitized output with REXML as a neutral, independent
-  # second parser (the differential oracle and structural assertions). Declared
-  # here so the suite keeps working once REXML leaves Ruby's default gems.
-  spec.add_development_dependency "rexml", "~> 3.4"
   spec.add_development_dependency "minitest", "~> 5.25"
   spec.add_development_dependency "rake", "~> 13.0"
   spec.add_development_dependency "rubocop-discourse", "~> 3.18"

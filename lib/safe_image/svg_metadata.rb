@@ -12,20 +12,6 @@ module SafeImage
     MAX_SVG_ATTRIBUTES = 50_000
     MAX_SVG_DIMENSION = 100_000
     MAX_SVG_PIXELS = 100_000_000
-    # Upper bound on the render tree the document instantiates. The caps above
-    # bound the *source* document, but several allowlisted features replicate
-    # referenced content at render time, so a small source can cost a consumer
-    # (browser/rasterizer) orders of magnitude more work:
-    #   * <use href="#id"> deep-copies its target subtree — a chain of doubling
-    #     groups fans a few dozen nodes into billions ("use bomb"), and a cyclic
-    #     reference expands forever.
-    #   * a <marker> is drawn once per vertex of every path/line/polyline/polygon
-    #     that references it, so (vertex count) x (marker subtree size) draws — a
-    #     dense `d` (~200k vertices fit in 1 MB) times a non-trivial marker is a
-    #     linear-but-huge "draw bomb" no node/byte/element cap can see.
-    # SvgSanitizer charges both against this single budget over the sanitized
-    # tree (renderer-free static accounting) and rejects when it is exceeded.
-    MAX_SVG_RENDER_UNITS = 1_000_000
 
     LENGTH_PATTERN = /\A\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(?:px)?\s*\z/i.freeze
     VIEWBOX_SPLIT = /[\s,]+/.freeze
@@ -46,7 +32,7 @@ module SafeImage
     # Declared encodings we accept: UTF-8/ASCII plus the single-byte,
     # ASCII-transparent legacy charsets (ISO-8859-*, Windows-125x). Their bytes
     # below 0x80 decode to identical ASCII, so the byte scans below see the same
-    # markup any decoder (REXML or a browser) does; and being single-byte, no
+    # markup any XML decoder or browser does; and being single-byte, no
     # lead byte can swallow a following quote the way Shift-JIS, GBK, or Big5
     # can. Multi-byte (Shift-JIS, GBK, EUC-*, ISO-2022-*), transforming (UTF-7:
     # "+ADw-" decodes to "<"), and NUL-interleaved (UTF-16/32) encodings are
@@ -54,7 +40,7 @@ module SafeImage
     # markup the parser acts on. The shape match alone is not airtight:
     # "utf8" or "windows-1259" fit the pattern yet name no real encoding, so a
     # name must also resolve via Encoding.find to pass — lookalikes fail
-    # closed here instead of leaking REXML's bare ArgumentError to the caller.
+    # closed here instead of leaking a parser encoding error to the caller.
     SAFE_DECLARED_ENCODING = /\A(?:utf-?8|us-ascii|ascii|iso-?8859-?\d{1,2}|(?:windows|cp)-?125\d)\z/i.freeze
     # ASCII-only so it matches the binary buffer; the optional BOM is stripped
     # before matching rather than embedded here (which would make this UTF-8).
@@ -205,7 +191,7 @@ module SafeImage
     # SAX does NOT raise on malformed XML even with recovery disabled — it
     # reports through the error callback and keeps going — so well-formedness is
     # enforced by recording any reported error and rejecting after the parse.
-    # This reproduces the old REXML pull-parser's reject set (unclosed/mismatched
+    # This preserves the old pull-parser's reject set (unclosed/mismatched
     # tags, trailing junk) and is strictly stricter on multiple root elements,
     # which is a safe direction for a gate.
     def scan_svg!(xml)
@@ -282,9 +268,7 @@ module SafeImage
               attrs.each_with_object({}) do |attr, hash|
                 # Dimensions are security-relevant: only the actual no-namespace
                 # root attributes a browser will use may feed the pixel cap. A
-                # namespaced e:width/e:height must not shadow width/height here
-                # and then be dropped by the sanitizer, leaving a huge output SVG
-                # that metadata claimed was tiny.
+                # namespaced e:width/e:height must not shadow width/height here.
                 next unless attr.prefix.to_s.empty? && attr.uri.to_s.empty?
 
                 hash[attr.localname] = attr.value

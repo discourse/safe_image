@@ -3,12 +3,11 @@
 require_relative "test_helper"
 
 module SafeImage
-  # Byte/structure-level fuzzing around the SVG metadata gate. The sanitizer's
-  # DOM fuzz test starts from well-formed XML; this one deliberately includes
-  # malformed XML, hostile declarations, unsafe encodings, NULs, and random byte
-  # soup. The invariant is that untrusted SVG input is either accepted safely or
-  # rejected inside SafeImage's error hierarchy — never with a raw parser/runtime
-  # exception escaping to callers.
+  # Byte/structure-level fuzzing around the SVG metadata gate. Cases deliberately
+  # include malformed XML, hostile declarations, unsafe encodings, NULs, and
+  # random byte soup. The invariant is that untrusted SVG input is either
+  # accepted safely or rejected inside SafeImage's error hierarchy — never with a
+  # raw parser/runtime exception escaping to callers.
   class SvgMetadataFuzzTest < TestCase
     SVG_XMLNS = "http://www.w3.org/2000/svg"
     SEEDS = ENV.fetch("SAFE_IMAGE_FUZZ_SEEDS", "3,99,4096,90001").split(",").map { |seed| Integer(seed) }.freeze
@@ -42,7 +41,7 @@ module SafeImage
       "\u202E"
     ].freeze
 
-    def test_svg_metadata_and_sanitizer_reject_fuzz_inside_error_hierarchy
+    def test_svg_metadata_rejects_fuzz_inside_error_hierarchy
       SEEDS.each do |seed|
         rng = Random.new(seed)
         CASES_PER_SEED.times do |index|
@@ -51,7 +50,6 @@ module SafeImage
           File.binwrite(path, bytes.b)
 
           assert_safe_size_result(path, bytes)
-          assert_safe_sanitize_result(path, bytes)
         end
       end
     end
@@ -67,38 +65,6 @@ module SafeImage
       # Rejection is a safe outcome for arbitrary untrusted bytes.
     rescue StandardError => e
       flunk "raw #{e.class} escaped from SafeImage.size for #{bytes.inspect}: #{e.message}"
-    end
-
-    def assert_safe_sanitize_result(path, bytes)
-      SafeImage.sanitize_svg!(path, id_namespace: "u1")
-      cleaned = File.read(path)
-      doc = REXML::Document.new(cleaned)
-      assert_equal "svg", doc.root&.name, "sanitized non-svg root for #{bytes.inspect}"
-      refute_match(
-        /<!DOCTYPE|<\?(?!xml\s)|<script\b|<foreignObject\b/i,
-        cleaned,
-        "unsafe markup survived sanitized fuzz case #{bytes.inspect}"
-      )
-      walk(doc.root) do |node|
-        node.attributes.each_attribute do |attr|
-          refute attr.name.to_s.downcase.start_with?("on"),
-                 "event attribute #{attr.expanded_name} survived sanitized fuzz case #{bytes.inspect}"
-          refute_match(
-            /(?:javascript|data):/i,
-            attr.value.to_s,
-            "active URL survived in sanitized attribute #{attr.expanded_name} for #{bytes.inspect}"
-          )
-        end
-      end
-    rescue SafeImage::Error
-      # Rejection is a safe outcome for arbitrary untrusted bytes.
-    rescue StandardError => e
-      flunk "raw #{e.class} escaped from sanitize_svg! for #{bytes.inspect}: #{e.message}"
-    end
-
-    def walk(element, &block)
-      yield element
-      element.children.each { |child| walk(child, &block) if child.is_a?(REXML::Element) }
     end
 
     def random_svg_bytes(rng)

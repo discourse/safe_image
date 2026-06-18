@@ -3,7 +3,7 @@
 Safe Image is a small Ruby image-processing boundary for untrusted uploads.
 
 It gives an application one narrow API for probing, thumbnailing, resizing,
-cropping, converting, optimising, SVG sanitising, animation checks, dominant
+cropping, converting, optimising, SVG metadata probing, animation checks, dominant
 colour extraction, favicon conversion, and letter-avatar generation.
 Everything that varies by host is decided once, at boot, with a single
 mandatory call:
@@ -67,8 +67,8 @@ SafeImage.convert(
 ## Configuration
 
 `SafeImage.configure!` must be called before any operation — typically from a
-boot-time initializer. Any operation before it (including the pure-Ruby SVG
-and remote helpers) raises `SafeImage::NotConfiguredError`.
+boot-time initializer. Any operation before it (including SVG metadata and remote
+helpers) raises `SafeImage::NotConfiguredError`.
 
 ```ruby
 SafeImage.configure!(
@@ -146,7 +146,7 @@ sudo pacman -S --needed libvips \
 | `jpegtran` (libjpeg-turbo) | optional | lossless tier of `fix_orientation`; uprighting EXIF-oriented JPEGs in `optimize` | `fix_orientation` falls back to the libvips re-encode tier; `optimize` of an oriented JPEG raises in strict mode (left untouched otherwise) |
 | `cjpegli` (libjxl) | optional | higher-quality encoding of generated JPEGs on the `:vips` backend — used automatically when installed | generated JPEGs use the backend's own encoder |
 | `landlock` gem ≥ 0.3 (Linux kernel ≥ 5.13) | required for `landlock: true` | the atomic sandbox around every operation, including fast direct command capture | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
-| `rexml` gem | automatic | SVG sanitising and SVG metadata | installed as a gem dependency |
+| `nokogiri` gem | automatic | bounded SVG metadata parser | installed as a gem dependency |
 
 The `landlock` gem is intentionally **not** a runtime gem dependency; add
 `gem "landlock", ">= 0.3"` to the host application's Gemfile if you want
@@ -714,125 +714,15 @@ PNG path:
 When `strict: true`, missing optimizer tools raise. When `strict: false`, missing
 optimizer tools are tolerated.
 
-### SVG sanitising
+### SVG handling
 
-#### `SafeImage.sanitize_svg!(path, max_pixels: nil, id_namespace:)`
-
-Sanitises an SVG in place using a small XML allowlist. Like other image
-operations, `max_pixels:` defaults to the value configured with
-`SafeImage.configure!` and rejects oversized SVG viewports before rewriting.
-`id_namespace:` is
-**required** — it forces a deliberate choice of where the output may be used,
-so there is no silently-wrong default (see "Inlining" below):
-
-```ruby
-# served as an <img src>/CSS-url/file and never spliced into a page's DOM:
-result = SafeImage.sanitize_svg!("icon.svg", id_namespace: :standalone)
-
-# spliced inline into an HTML DOM (pass a stable, per-document token):
-result = SafeImage.sanitize_svg!("icon.svg", id_namespace: "u#{upload.sha1}")
-
-puts result[:sanitized]
-```
-
-Omitting `id_namespace:` (or passing `nil`/`""`) raises `ArgumentError`.
-
-The sanitizer removes unsafe elements/attributes such as scripts and event
-handlers. It is intentionally conservative rather than a full browser-grade SVG
-implementation.
-
-CSS is reduced to a constructed allowlist subset rather than stripped: `style`
-attributes (as written by Inkscape) and `<style>` elements (as written by
-Illustrator) survive when they parse against a small grammar — allowlisted
-properties, type/class/id selectors, numeric/keyword/color values, and
-`url(#fragment)` references only. The output is reassembled from validated
-tokens, never echoed from the input; escapes, quotes, at-rules (`@import`,
-`@font-face`, `@media`), comments, strings, and unknown
-properties/functions/selectors drop the declaration, rule, or whole stylesheet
-rather than being interpreted.
-
-Two behaviours are worth knowing before relying on this:
-
-- **The CSS property allowlist mirrors the presentation attributes that have
-  CSS-property twins** — `SvgCss::ALLOWED_PROPERTIES` is a subset of
-  `SvgSanitizer::ALLOWED_ATTRIBUTES` (asserted by a test), so a `fill:`
-  declaration and a `fill=""` attribute are treated identically and a property
-  the sanitizer would strip as an attribute is also dropped in CSS. (The
-  reverse does not hold: geometry/XML attributes like `width`, `href`, and
-  `xmlns` are not CSS properties.) The set covers the common paint, stroke
-  (including `stroke-dasharray` and `vector-effect`), marker, text, and
-  visibility properties that Inkscape and Illustrator emit; it is deliberately
-  narrower than a browser. Filters (`filter`, `fe*`) are not yet included.
-- **A `<style>` element fails closed as a whole** on anything outside a flat
-  list of `selector { declarations }` rules. Any at-rule (e.g. one stray
-  `@import`), a nested block, or an unbalanced brace discards every rule in that
-  element, not just the offending one. Within a well-formed stylesheet,
-  individual selectors and declarations still drop independently.
-
-SVG sanitising is defense-in-depth for stored bytes. Applications that serve
-user-supplied SVGs directly should still use response-level controls such as a
+Safe Image no longer sanitises or rewrites SVG files. It only supports bounded
+metadata probing for local and remote `.svg` inputs (`type`, `size`, `info`, and
+the corresponding remote helpers). Applications that accept user-supplied SVG
+content for display should run a dedicated SVG sanitizer in their own upload or
+rendering pipeline, and should still use response-level controls such as a
 restrictive `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and/or
-attachment/sandbox handling for direct-open routes. Browsers restrict script
-execution when an SVG is embedded as `<img>`, but a top-level SVG document is a
-different sink.
-
-#### Inlining sanitized SVG into an HTML page
-
-The `id_namespace:` argument forces this decision at every call site — there is
-no default to get wrong.
-
-Pass `:standalone` when the output is only ever served as an external resource —
-`<img src>`, `background-image`, an `<object>`/`<iframe>`, or its own file. This
-is the document-safe form. It is **not** safe to splice directly into an HTML
-DOM: a preserved `<style>` rule like `*{visibility:hidden}` or
-`#header{display:none}` would join the host document's cascade, and the SVG's
-`id`s could clobber host ids — both CSS-injection / UI-redress vectors.
-
-Pass a **stable, per-document** String (e.g. the upload's sha) to make the output
-safe to inline:
-
-```ruby
-SafeImage.sanitize_svg!("icon.svg", id_namespace: "u#{upload.sha1}")
-```
-
-With a namespace, the sanitizer:
-
-- prefixes every `id` and every reference to it — `href`/`xlink:href` fragments,
-  `url(#…)` in attributes and CSS, and ARIA IDREF attributes (`aria-labelledby`,
-  `aria-describedby`, `aria-controls`, …) — then drops any reference that does
-  not resolve inside the sanitized SVG, so internal references stay intact but
-  cannot collide with or bind to host ids; and
-- prefixes every `class` token (and the `.class` selectors that match them), so
-  an attacker can't invoke the host page's framework CSS — a bare
-  `class="modal fixed"` would otherwise pick up Bootstrap/Tailwind/app styles and
-  become an overlay. Internal class styling still matches because attribute and
-  selector are prefixed together; and
-- scopes every `<style>` selector under a `<ns>-scope` class it adds to the root
-  `<svg>`, so `*` and type selectors only match that document's own content and
-  can never reach the host page; and
-- rejects `var()`, `env()`, and `attr()` in presentation attributes — they
-  resolve against the host page (custom properties, environment) and could pull
-  in values, including a `url()`, the sanitizer never saw; and
-- drops `overflow` from the root `<svg>` so it clips to its declared viewport — a
-  tiny `width`/`height` with `overflow:visible` and oversized content would
-  otherwise paint a full-page overlay. Inner elements keep `overflow` (markers
-  need it); the root clip bounds them.
-
-Because every `<style>` selector is anchored *under* the scope class, a rule
-targeting the root itself — `svg { … }`, `* { … }` intended to include the root,
-or a class on the root such as `.icon { … }` for `<svg class="icon">` — matches
-the root's descendants but not the root element. Root-level styling from a
-`<style>` block therefore does not survive; style the root via attributes if you
-need it. (This is rare in editor exports, which style the root with attributes
-and inner elements with classes.)
-
-`style=""` attributes never need selector scoping — a declaration list only
-styles its own element — so they are not a cascade risk in either mode. They can
-still carry `url(#…)` references, though, which are only namespaced when you pass
-a String; so `:standalone` output (bare ids and references) is still not for
-inline use. The transform is idempotent for a given namespace, so re-sanitising
-is a no-op. Use a per-document value so two inlined SVGs on one page don't share
-a namespace.
+attachment/sandbox handling for direct-open routes.
 
 ### Compatibility aliases
 
@@ -886,12 +776,8 @@ What it does:
   blocking, DNS pinning, redirect limits, HTTPS-to-HTTP rejection, proxy-env
   bypass prevention, request-header allowlists, content-type/extension
   agreement, and probe-before-yield (details under [Remote URLs](#remote-urls))
-- parses SVG metadata with a bounded pure-Ruby parser; SVG is never handed to
+- parses SVG metadata with a bounded Nokogiri SAX parser; SVG is never handed to
   ImageMagick for probing
-- sanitises SVG conservatively, allowlist based: rejects `DOCTYPE` and XML
-  processing instructions, removes comments and disallowed elements, converts
-  CDATA to escaped text, and blocks event handlers, external URLs, and
-  `javascript:` / `data:` URL values
 - supports optional Landlock subprocess sandboxing on Linux
 
 The backend is a configuration decision, not a per-call option. Safe Image
@@ -914,9 +800,9 @@ ImageMagick path runs with:
 
 That does **not** make hostile files benign. Raster decoders still parse attacker
 controlled bytes: libjpeg, libpng, libwebp, libheif/HEIC/AVIF, ImageMagick's
-raster decoders, and libvips loaders. If one of those decoders has a memory
-corruption bug or pathological resource-consumption bug, policy alone is not a
-sandbox.
+raster decoders, and libvips loaders; Nokogiri/libxml2 also parses SVG metadata.
+If one of those parsers or decoders has a memory corruption bug or pathological
+resource-consumption bug, policy alone is not a sandbox.
 
 So the intended posture is:
 
@@ -961,7 +847,6 @@ worker:
 - `animated?`
 - `letter_avatar`
 - `optimize_image!`
-- `sanitize_svg!`
 
 There is no silent fallback once landlock is configured. If sandbox setup or
 a sandboxed command fails, the operation fails.

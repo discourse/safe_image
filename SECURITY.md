@@ -24,10 +24,9 @@ Safe Image assumes image input may be attacker-controlled. The library is design
 - decompression-bomb ceilings enforced from container/header metadata before
   any pixel decode (128MP default, plus dedicated SVG and ICO caps)
 - restrictive ImageMagick policy disabling delegates, filters, `@file`, remote URL coders, Ghostscript-backed formats, and dangerous pseudo-formats
-- risky container formats parsed in memory-safe Ruby rather than C: SVG
-  (bounded REXML metadata and allowlist sanitising) and ICO (bounds-checked
-  directory/DIB parsing); extracted pixels are re-encoded through libvips and
-  embedded payload bytes are never copied through verbatim
+- bounded SVG metadata probing (Nokogiri SAX with explicit byte/structure caps)
+  and pure-Ruby ICO directory/DIB parsing; extracted ICO pixels are re-encoded
+  through libvips and embedded payload bytes are never copied through verbatim
 - letter avatar text rendering escapes the user-derived glyph before Pango
   markup parsing, and fonts come from an allowlist (the default font is
   bundled with the gem)
@@ -43,7 +42,11 @@ bytes in-process like the other raster decoders below.
 
 ## Non-goals
 
-Safe Image does not claim that parsing hostile images in-process is memory-safe. Raster decoders such as libjpeg, libpng, libwebp, libheif, libjxl, libnsgif, libvips loaders, and ImageMagick coders still parse attacker-controlled bytes. A decoder memory-corruption bug or pathological resource-consumption bug is still possible.
+Safe Image does not claim that parsing hostile images in-process is memory-safe.
+Raster decoders such as libjpeg, libpng, libwebp, libheif, libjxl, libnsgif,
+libvips loaders, and ImageMagick coders still parse attacker-controlled bytes;
+so does Nokogiri/libxml2 for bounded SVG metadata. A parser or decoder
+memory-corruption bug or pathological resource-consumption bug is still possible.
 
 The honest claim is defense-in-depth:
 

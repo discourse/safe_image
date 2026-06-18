@@ -30,7 +30,7 @@ module SafeImage
       env = { "RUBYOPT" => nil, "BUNDLE_GEMFILE" => nil, "BUNDLE_BIN_PATH" => nil }
       command = [RbConfig.ruby, "--disable-gems"]
       # With RubyGems disabled the child loses every gem's load path, including
-      # the gem's own bundled runtime deps (rexml, and fiddle from Ruby 3.5 on,
+      # the gem's own bundled runtime deps (nokogiri, and fiddle from Ruby 3.5 on,
       # which ships a C extension under its own load-path entries). Pass the
       # parent's load paths through so those deps resolve, but drop landlock so
       # it stays genuinely unloadable and sandbox_available? reports false.

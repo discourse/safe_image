@@ -25,7 +25,6 @@ module SafeImage
     def test_rejects_empty_svg_file
       svg = write_tmp("empty.svg", "")
       assert_raises(InvalidImageError) { SafeImage.size(svg) }
-      assert_raises(InvalidImageError) { SafeImage.sanitize_svg!(svg, id_namespace: :standalone) }
     end
 
     def test_derives_dimensions_from_viewbox
@@ -39,14 +38,6 @@ module SafeImage
       SVG
 
       assert_raises(LimitError) { SafeImage.size(svg, max_pixels: 100) }
-    end
-
-    def test_sanitize_ignores_namespaced_root_dimensions
-      svg = write_tmp("sanitize-namespaced-dimensions.svg", <<~SVG)
-        <svg xmlns="http://www.w3.org/2000/svg" xmlns:e="urn:e" width="1000" height="1000" e:width="1" e:height="1"></svg>
-      SVG
-
-      assert_raises(LimitError) { SafeImage.sanitize_svg!(svg, id_namespace: :standalone, max_pixels: 100) }
     end
 
     def test_accepts_pixel_units
@@ -143,8 +134,9 @@ module SafeImage
 
     # The DOCTYPE/PI guards are ASCII byte regexes. A UTF-16 document interleaves
     # NUL bytes between ASCII characters, so "<!DOCTYPE" never matches the regex,
-    # yet REXML decodes the BOM and honours the DOCTYPE. Reject non-UTF-8 input
-    # before the byte scans so the bytes we inspect are the bytes REXML parses.
+    # yet XML parsers decode the BOM and honour the DOCTYPE. Reject non-UTF-8
+    # input before the byte scans so the bytes we inspect are the bytes the parser
+    # sees.
     def test_rejects_utf16_doctype_smuggling
       [Encoding::UTF_16LE, Encoding::UTF_16BE].each do |encoding|
         src = <<~SVG
@@ -180,7 +172,8 @@ module SafeImage
 
     # Single-byte, ASCII-transparent charsets are safe: every markup byte is
     # below 0x80 and decodes identically to ASCII, so the byte-level guards stay
-    # correct while REXML decodes the high bytes (here e-acute, 0xE9) as latin1.
+    # correct while the XML parser decodes the high bytes (here e-acute, 0xE9) as
+    # latin1.
     def test_accepts_single_byte_legacy_encoding
       svg = <<~SVG.encode(Encoding::ISO_8859_1)
         <?xml version="1.0" encoding="ISO-8859-1"?>
@@ -201,7 +194,7 @@ module SafeImage
 
     # The encoding allowlist matches name shapes, which also fit names no
     # decoder knows ("utf8", "windows-1259"). Those must fail closed as
-    # InvalidImageError rather than leak REXML's bare ArgumentError.
+    # InvalidImageError rather than leak a parser encoding error.
     def test_rejects_lookalike_encoding_names_as_invalid_image
       %w[utf8 windows-1259 ISO-8859-42 cp-1252 windows1252 iso-88591].each do |encoding|
         svg = write_tmp("lookalike-#{encoding}.svg", <<~SVG)
@@ -223,10 +216,9 @@ module SafeImage
       end
     end
 
-    # Defense in depth: if a declared encoding ever reaches REXML without
-    # passing the gate, the bare ArgumentError from its Encoding.find lookup
-    # must still surface as InvalidImageError.
-    def test_scan_maps_rexml_encoding_errors_to_invalid_image
+    # Defense in depth: if a declared encoding ever reaches the XML parser without
+    # passing the gate, the parser error must still surface as InvalidImageError.
+    def test_scan_maps_parser_encoding_errors_to_invalid_image
       xml = "<?xml version=\"1.0\" encoding=\"bogus-name\"?><svg></svg>"
       assert_raises(InvalidImageError) { SvgMetadata.scan_svg!(xml) }
     end

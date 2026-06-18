@@ -10,8 +10,8 @@ module SafeImage
   # replaces the configuration atomically.
   class ConfigurationTest < TestCase
     # The suite configures SafeImage in setup, so the unconfigured state is
-    # exercised in a fresh subprocess — including a pure-Ruby operation and a
-    # remote fetch, which must fail before any file or network I/O.
+    # exercised in a fresh subprocess — including SVG metadata and remote fetch,
+    # which must fail before any file or network I/O.
     UNCONFIGURED_SCRIPT = <<~'RUBY'
       require "safe_image"
       require "json"
@@ -21,7 +21,7 @@ module SafeImage
         "probe" => -> { SafeImage.probe(ENV["JPG"]) },
         "thumbnail" => -> { SafeImage.thumbnail(input: ENV["JPG"], output: File.join(ENV["OUT"], "x.jpg"), width: 1, height: 1) },
         "dominant_color" => -> { SafeImage.dominant_color(ENV["JPG"]) },
-        "sanitize_svg!" => -> { SafeImage.sanitize_svg!(ENV["SVG"], id_namespace: :standalone) },
+        "svg_size" => -> { SafeImage.size(ENV["SVG"]) },
         "fetch_remote" => -> { SafeImage.fetch_remote("https://192.0.2.1/never-fetched.png") {} }
       }
       attempts.each do |name, attempt|
@@ -45,7 +45,7 @@ module SafeImage
       out = JSON.parse(stdout.lines.last)
 
       assert_equal false, out["configured?"]
-      %w[probe thumbnail dominant_color sanitize_svg! fetch_remote].each do |operation|
+      %w[probe thumbnail dominant_color svg_size fetch_remote].each do |operation|
         assert_includes out.fetch(operation),
                         "SafeImage.configure!",
                         "#{operation} must raise NotConfiguredError with the call to make"

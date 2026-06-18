@@ -37,7 +37,6 @@ module SafeImage
       animated?
       letter_avatar
       optimize_image!
-      sanitize_svg!
     ].freeze
 
     def available?
@@ -272,8 +271,7 @@ module SafeImage
           {
             operation: operation,
             # JSON has no symbol type; wrap symbol values so the worker can restore
-            # them (e.g. id_namespace: :standalone must not arrive as the string
-            # "standalone", which resolve_namespace would treat as a real namespace).
+            # them for keyword values that public APIs accept as symbols.
             request: deep_encode_symbols(request),
             # The worker is a fresh process and must be configured like the
             # parent — minus landlock, since it already runs inside the sandbox.
@@ -304,7 +302,7 @@ module SafeImage
         operation = payload.fetch(:operation).to_s
         allowed_operations = %w[
           probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
-          convert_favicon_to_png frame_count animated? letter_avatar optimize_image! sanitize_svg!
+          convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
         ]
         raise ArgumentError, "unsupported sandbox operation: #{operation}" unless allowed_operations.include?(operation)
 
@@ -429,7 +427,7 @@ module SafeImage
       end
 
       # In-place mutators need write permission for an existing input path too.
-      if %w[optimize optimize_image! sanitize_svg! fix_orientation].include?(operation.to_s)
+      if %w[optimize optimize_image! fix_orientation].include?(operation.to_s)
         first = Array(request[:args]).first
         if first.is_a?(String) && File.exist?(first)
           expanded = File.expand_path(first)
