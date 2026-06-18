@@ -27,7 +27,8 @@ Gem::Specification.new do |spec|
       "LICENSE",
       "README.md",
       "SECURITY.md",
-      "CHANGELOG.md"
+      "CHANGELOG.md",
+      "docs/**/*.md"
     ]
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/safe_image_vips_helper/extconf.rb"]

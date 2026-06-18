@@ -17,18 +17,20 @@ module SafeImage
       File.chmod(0o755, File.join(fake_bin, command))
 
       ps = write_tmp("ghostscript.ps", POSTSCRIPT)
-      assert_raises(CommandError) do
-        Runner.run!(
-          [command, ps, tmp_path("out.png")],
-          env: {
-            "PATH" => fake_bin,
-            "MAGICK_CONFIGURE_PATH" => "/tmp",
-            "HOME" => fake_bin,
-            "XDG_CACHE_HOME" => fake_bin,
-            "VIPS_BLOCK_UNTRUSTED" => "0"
-          }
-        )
-      end
+      error =
+        assert_raises(CommandError) do
+          Runner.run!(
+            [command, ps, tmp_path("out.png")],
+            env: {
+              "PATH" => fake_bin,
+              "MAGICK_CONFIGURE_PATH" => "/tmp",
+              "HOME" => fake_bin,
+              "XDG_CACHE_HOME" => fake_bin,
+              "VIPS_BLOCK_UNTRUSTED" => "0"
+            }
+          )
+        end
+      assert_equal :exit_status, error.category
       refute_path_exists marker, "Runner used caller-controlled PATH"
     end
 
@@ -38,6 +40,7 @@ module SafeImage
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       error = assert_raises(CommandError) { Runner.run!(["sh", "-c", "exec >/dev/null 2>&1; sleep 10"], timeout: 1) }
       assert_includes error.message, "timed out"
+      assert_equal :timeout, error.category
 
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
       assert_operator elapsed, :<, 5, "timeout not enforced (#{elapsed.round(1)}s for a 1s limit)"

@@ -22,7 +22,8 @@ in one place and every operation uses it.
 The premise is that hostile image bytes are a lousy thing to spread across
 model callbacks, upload helpers, optimizer wrappers, and hand-built command
 strings. Safe Image puts the risky operations behind one small, hardened
-choke point instead.
+choke point instead. See [`docs/architecture.md`](docs/architecture.md) for the
+security model and the invariants future changes must preserve.
 
 ## Install
 
@@ -56,8 +57,8 @@ result = SafeImage.thumbnail(
 puts "#{result.backend}: #{result.width}x#{result.height} #{result.filesize} bytes"
 
 SafeImage.convert(
-  "upload.png",
-  "upload.jpg",
+  input: "upload.png",
+  output: "upload.jpg",
   format: "jpg",
   quality: 85,
   max_pixels: 40_000_000
@@ -143,7 +144,7 @@ sudo pacman -S --needed libvips \
 | `jpegoptim` | required for JPEG `optimize` | lossless JPEG optimisation and metadata stripping | JPEG `optimize` raises in strict mode |
 | `oxipng` | required for PNG `optimize` | lossless PNG optimisation | PNG `optimize` raises in strict mode |
 | `pngquant` | optional | lossy PNG quantisation (`optimize_mode: :lossy`, files < 500KB) | lossy mode silently skips the quantisation pass |
-| `jpegtran` (libjpeg-turbo) | optional | lossless tier of `fix_orientation`; uprighting EXIF-oriented JPEGs in `optimize` | `fix_orientation` falls back to the libvips re-encode tier; `optimize` of an oriented JPEG raises in strict mode (left untouched otherwise) |
+| `jpegtran` (libjpeg-turbo) | optional | lossless tier of `fix_orientation`; uprighting EXIF-oriented JPEGs in `optimize` | `fix_orientation` falls back to the libvips re-encode tier; `optimize` of an oriented JPEG raises in strict mode (or copies source to output with `strict: false`) |
 | `cjpegli` (libjxl) | optional | higher-quality encoding of generated JPEGs on the `:vips` backend — used automatically when installed | generated JPEGs use the backend's own encoder |
 | `landlock` gem ≥ 0.3 (Linux kernel ≥ 5.13) | required for `landlock: true` | the atomic sandbox around every operation, including fast direct command capture | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
 | `nokogiri` gem | automatic | bounded SVG metadata parser | installed as a gem dependency |
@@ -496,7 +497,11 @@ decoding still uses the same sandboxed image-processing path.
 ### Generating images
 
 Operations that write a new image. All of them run on the configured backend
-and return [`SafeImage::Result`](#return-values).
+and return [`SafeImage::Result`](#return-values). Every operation that reads an
+existing image and writes a file requires explicit `input:` and `output:` paths;
+they must be distinct. Safe Image does not expose in-place mutating APIs — if a
+caller wants to replace a file, write to a separate destination and perform the
+rename in application code.
 
 #### `SafeImage.thumbnail(...)`
 
@@ -526,13 +531,13 @@ Supported outputs on the `:vips` backend:
 - `avif`
 - `jxl` (requires a libvips build with libjxl support)
 
-#### `SafeImage.resize(from, to, width, height, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
+#### `SafeImage.resize(input:, output:, width:, height:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
 
 Creates a resized thumbnail-style output.
 
 ```ruby
-SafeImage.resize("upload.jpg", "thumb.jpg", 600, 400)
-SafeImage.resize("upload.jpg", "thumb.jpg", 600, 400, quality: 85)
+SafeImage.resize(input: "upload.jpg", output: "thumb.jpg", width: 600, height: 400)
+SafeImage.resize(input: "upload.jpg", output: "thumb.jpg", width: 600, height: 400, quality: 85)
 ```
 
 `resize`, `crop` and `downsize` run on the configured backend:
@@ -543,29 +548,29 @@ SafeImage.resize("upload.jpg", "thumb.jpg", 600, 400, quality: 85)
   (`-thumbnail`, catrom interpolation, unsharp, sRGB profile); configure this
   if byte-similar output with previously generated thumbnails matters
 
-#### `SafeImage.crop(from, to, width, height, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
+#### `SafeImage.crop(input:, output:, width:, height:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
 
 Creates a north-cropped image — the shape typically used for square avatar
 crops.
 
 ```ruby
-SafeImage.crop("upload.jpg", "avatar.jpg", 240, 240)
+SafeImage.crop(input: "upload.jpg", output: "avatar.jpg", width: 240, height: 240)
 ```
 
-#### `SafeImage.downsize(from, to, dimensions, optimize: true, max_pixels: nil, quality: 85, chroma_subsampling: :auto)`
+#### `SafeImage.downsize(input:, output:, dimensions:, optimize: true, max_pixels: nil, quality: 85, chroma_subsampling: :auto)`
 
 Downsizes an image using ImageMagick-style geometry strings.
 
 ```ruby
-SafeImage.downsize("large.png", "small.png", "50%")
-SafeImage.downsize("large.png", "small.png", "100x100>")
-SafeImage.downsize("large.png", "small.png", "400000@")
+SafeImage.downsize(input: "large.png", output: "small.png", dimensions: "50%")
+SafeImage.downsize(input: "large.png", output: "small.png", dimensions: "100x100>")
+SafeImage.downsize(input: "large.png", output: "small.png", dimensions: "400000@")
 ```
 
 The vips backend supports the geometry forms covered by the test suite:
 percentage, bounding box with `>`, and pixel-area cap with `@`.
 
-#### `SafeImage.convert(from, to, format:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
+#### `SafeImage.convert(input:, output:, format:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)`
 
 Converts an input image to an explicit output `format:`. Unsupported formats
 raise `SafeImage::UnsupportedFormatError`.
@@ -582,12 +587,12 @@ For PNG-to-JPEG on the `:vips` backend, `cjpegli` is used automatically when
 installed (see [JPEG encoding of generated images](#jpeg-encoding-of-generated-images)).
 
 ```ruby
-SafeImage.convert("upload.png", "upload.jpg", format: "jpg", quality: 85)
-SafeImage.convert("upload.heic", "upload.jpg", format: "jpg", quality: 85)
-SafeImage.convert("upload.jpg", "upload.webp", format: "webp", quality: 85)
+SafeImage.convert(input: "upload.png", output: "upload.jpg", format: "jpg", quality: 85)
+SafeImage.convert(input: "upload.heic", output: "upload.jpg", format: "jpg", quality: 85)
+SafeImage.convert(input: "upload.jpg", output: "upload.webp", format: "webp", quality: 85)
 ```
 
-#### `SafeImage.fix_orientation(from, to = from, max_pixels: nil, quality: nil)`
+#### `SafeImage.fix_orientation(input:, output:, max_pixels: nil, quality: nil)`
 
 Bakes the EXIF orientation into the pixels and clears the tag. The `:vips`
 backend tries tiers in order:
@@ -601,14 +606,11 @@ backend tries tiers in order:
 The `:imagemagick` backend uses the previous `-auto-orient` behaviour and
 re-encodes at the input's estimated quality.
 
-If `to` is omitted, the file is rewritten in place.
-
 ```ruby
-SafeImage.fix_orientation("upload.jpg")
-SafeImage.fix_orientation("upload.jpg", "oriented.jpg")
+SafeImage.fix_orientation(input: "upload.jpg", output: "oriented.jpg")
 ```
 
-#### `SafeImage.convert_favicon_to_png(from, to, optimize: true, max_pixels: nil)`
+#### `SafeImage.convert_favicon_to_png(input:, output:, optimize: true, max_pixels: nil)`
 
 Extracts the largest ICO entry and writes PNG. On the `:vips` backend no
 ImageMagick is involved: the container and legacy DIB payloads (1/4/8/24/32bpp
@@ -620,7 +622,7 @@ backend the conversion runs through ImageMagick's ico decoder under the
 bundled policy.
 
 ```ruby
-SafeImage.convert_favicon_to_png("favicon.ico", "favicon.png")
+SafeImage.convert_favicon_to_png(input: "favicon.ico", output: "favicon.png")
 ```
 
 #### `SafeImage.letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "DejaVu-Sans")`
@@ -668,10 +670,10 @@ untrusted-input decoder.
 | Operation | Behavior |
 | --- | --- |
 | `thumbnail` / `resize` / `crop` / `downsize` to JPEG on the `:vips` backend | decode through libvips first, then use `cjpegli` when installed; otherwise normal libvips JPEG output |
-| `convert("input.png", "output.jpg", format: "jpg")` on the `:vips` backend | decode the PNG through libvips into a generated PNG first, then use `cjpegli` when installed; otherwise libvips |
+| `convert(input: "input.png", output: "output.jpg", format: "jpg")` on the `:vips` backend | decode the PNG through libvips into a generated PNG first, then use `cjpegli` when installed; otherwise libvips |
 | `convert` from HEIC/WebP/AVIF/GIF/JPEG/JXL to JPEG | decode through the native libvips loaders and encode with libvips; `cjpegli` is not treated as a universal decoder |
 | any operation on the `:imagemagick` backend | ImageMagick encodes; `cjpegli` is never used |
-| `optimize("existing.jpg")` | use `jpegoptim`; never `cjpegli` |
+| `optimize(input: "existing.jpg", output: "optimized.jpg")` | use `jpegoptim`; never `cjpegli` |
 
 `cjpegli` output is ordinary browser-compatible JPEG. It is optional because it
 is a system binary, not a Ruby dependency. Safe Image detects it at runtime.
@@ -679,16 +681,17 @@ is a system binary, not a Ruby dependency. Safe Image detects it at runtime.
 `chroma_subsampling: :auto` uses `4:4:4` for PNG-sourced JPEG conversion and
 `4:2:0` otherwise. Pass `"420"`, `"422"`, or `"444"` to force a value.
 
-### Optimising in place
+### Optimising to a destination
 
-#### `SafeImage.optimize(path, mode: :lossless, strip_metadata: true, quality: nil, strict: true)`
+#### `SafeImage.optimize(input:, output:, mode: :lossless, strip_metadata: true, quality: nil, strict: true)`
 
-Optimises an existing JPEG or PNG in place.
+Optimises an existing JPEG or PNG into a separate output path. The source file is
+never modified, and `input:`/`output:` must not refer to the same file.
 
 ```ruby
-SafeImage.optimize("image.jpg", quality: 85)
-SafeImage.optimize("image.png")
-SafeImage.optimize("image.png", mode: :lossy, quality: "65-90")
+SafeImage.optimize(input: "image.jpg", output: "image.optimized.jpg", quality: 85)
+SafeImage.optimize(input: "image.png", output: "image.optimized.png")
+SafeImage.optimize(input: "image.png", output: "image.lossy.png", mode: :lossy, quality: "65-90")
 ```
 
 JPEG path:
@@ -702,8 +705,8 @@ JPEG path:
   images rotate exactly (`-perfect`); others drop the partial edge blocks
   (`-trim`, under one MCU — at most 15px), reported as `trimmed: true` in
   the result rather than re-encoding behind a method named `optimize`.
-  Without `jpegtran`, an oriented JPEG raises in strict mode and is left
-  untouched otherwise — never stripped sideways.
+  Without `jpegtran`, an oriented JPEG raises in strict mode and the output is
+  not written; with `strict: false`, the original bytes are copied to `output:`.
 
 PNG path:
 
@@ -712,7 +715,8 @@ PNG path:
   then `oxipng`
 
 When `strict: true`, missing optimizer tools raise. When `strict: false`, missing
-optimizer tools are tolerated.
+optimizer tools are tolerated and the output is still written from the source
+copy when possible.
 
 ### SVG handling
 
@@ -723,21 +727,6 @@ content for display should run a dedicated SVG sanitizer in their own upload or
 rendering pipeline, and should still use response-level controls such as a
 restrictive `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and/or
 attachment/sandbox handling for direct-open routes.
-
-### Compatibility aliases
-
-Two thin wrappers kept for callers migrating from existing upload pipelines:
-
-```ruby
-SafeImage.optimize_image!("image.jpg")
-SafeImage.optimize_image!("image.png", allow_lossy_png: true)
-SafeImage.convert_to_jpeg("upload.heic", "upload.jpg", quality: 85)
-```
-
-`optimize_image!(path, allow_lossy_png: false, strip_metadata: true, quality: nil, strict: true)`
-forwards to `optimize`, with `allow_lossy_png:` mapping to `mode:`.
-`convert_to_jpeg(from, to, ...)` forwards to `convert` with `format: "jpg"`
-and accepts the same keywords.
 
 ## Security
 
@@ -840,13 +829,11 @@ worker:
 - `crop`
 - `downsize`
 - `convert`
-- `convert_to_jpeg` compatibility alias
 - `fix_orientation`
 - `convert_favicon_to_png`
 - `frame_count`
 - `animated?`
 - `letter_avatar`
-- `optimize_image!`
 
 There is no silent fallback once landlock is configured. If sandbox setup or
 a sandboxed command fails, the operation fails.

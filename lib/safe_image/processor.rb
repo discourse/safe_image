@@ -1,16 +1,12 @@
 # frozen_string_literal: true
 
-require "fileutils"
-require "pathname"
-require "tempfile"
-
 module SafeImage
   class Processor
-    SUPPORTED_INPUTS = %w[jpg jpeg png gif webp heic heif avif jxl].freeze
-    SUPPORTED_OUTPUTS = %w[jpg jpeg png gif webp avif jxl].freeze
+    SUPPORTED_INPUTS = Formats::NATIVE_INPUTS
+    SUPPORTED_OUTPUTS = Formats::NATIVE_OUTPUTS
     # Formats the post-processing optimizer tools understand; other outputs
     # skip the optimize pass instead of erroring.
-    OPTIMIZABLE_OUTPUTS = %w[jpg png].freeze
+    OPTIMIZABLE_OUTPUTS = Formats::OPTIMIZABLE_OUTPUTS
 
     def initialize(max_pixels: nil, chroma_subsampling: :auto)
       @max_pixels = max_pixels || SafeImage.config.max_pixels
@@ -29,24 +25,23 @@ module SafeImage
         width: info.fetch(:width),
         height: info.fetch(:height),
         filesize: File.size(input),
-        backend: "libvips-direct",
+        backend: BackendLabel.build(:vips),
         duration_ms: info.fetch(:duration_ms),
         optimizer: nil
       )
     end
 
     def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, optimize: false, optimize_mode: :lossless)
-      input = safe_existing_file!(input)
-      output = safe_output_path!(output)
+      input, output = PathSafety.ensure_distinct_file_paths!(input, output)
+      safe_existing_file!(input)
       width = Integer(width)
       height = Integer(height)
       quality = Integer(quality)
       raise ArgumentError, "width and height must be positive" if width <= 0 || height <= 0
       raise ArgumentError, "quality must be 1..100" unless (1..100).cover?(quality)
 
-      out_format = (format || output.extname.delete_prefix(".")).downcase
-      out_format = "jpg" if out_format == "jpeg"
-      if SUPPORTED_OUTPUTS.none? { |candidate| candidate == out_format }
+      out_format = Formats.normalize(format || output.extname.delete_prefix("."))
+      unless Formats.native_output?(out_format)
         raise UnsupportedFormatError, "unsupported output format: #{out_format.inspect}"
       end
 
@@ -83,7 +78,7 @@ module SafeImage
       opt_info = nil
       if optimize && OPTIMIZABLE_OUTPUTS.include?(out_format)
         opt_info =
-          Optimizer.optimize(
+          optimize_output(
             output,
             mode: optimize_mode,
             strip_metadata: true,
@@ -108,6 +103,12 @@ module SafeImage
 
     private
 
+    def optimize_output(output, **options)
+      AtomicOutput.replace(output, suffix: ".safe-image#{output.extname}") do |tmp_path|
+        Optimizer.optimize(input: output, output: tmp_path, **options)
+      end
+    end
+
     # cjpegli is an output-quality tool, not a configuration choice: installed
     # means used. It encodes only pixels this gem already decoded, so it is
     # not part of the untrusted-input surface the backend choice controls.
@@ -116,10 +117,7 @@ module SafeImage
     end
 
     def jpegli_thumbnail(input:, output:, width:, height:, quality:, source_format:)
-      output.dirname.mkpath
-      Tempfile.create([output.basename(".*").to_s, ".safe-image.png"], output.dirname.to_s) do |tmp|
-        tmp_path = Pathname.new(tmp.path)
-        tmp.close
+      AtomicOutput.with_temp_path_near(output, suffix: ".safe-image.png") do |tmp_path|
         Native.thumbnail(input.to_s, tmp_path.to_s, width, height, "png", 100, @max_pixels)
         JpegliBackend.encode(
           input: tmp_path,
@@ -132,33 +130,22 @@ module SafeImage
             ),
           input_format: normalized_source_format(source_format)
         )
-      ensure
-        FileUtils.rm_f(tmp_path) if defined?(tmp_path) && tmp_path
       end
     end
 
     def normalized_source_format(format)
-      format = format.to_s.downcase
-      format == "jpeg" ? "jpg" : format
+      Formats.normalize(format)
     end
 
     def result_backend(info, backend)
-      base = backend == :vips ? "libvips-direct" : "imagemagick"
-      info[:encoder] == "cjpegli" ? "#{base}+cjpegli" : base
+      BackendLabel.build(backend, encoder: info[:encoder])
     end
 
     def safe_existing_file!(path)
       path = PathSafety.ensure_regular_file!(path)
-      ext = path.extname.delete_prefix(".").downcase
-      ext = "jpg" if ext == "jpeg"
-      if SUPPORTED_INPUTS.none? { |candidate| candidate == ext }
-        raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}"
-      end
+      ext = Formats.extension(path)
+      raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}" unless Formats.native_input?(ext)
       path
-    end
-
-    def safe_output_path!(path)
-      PathSafety.ensure_safe_output_path!(path)
     end
 
     def validate_pixels!(width, height)

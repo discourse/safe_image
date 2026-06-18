@@ -40,11 +40,15 @@ module SafeImage
 
     def test_convert_rejects_input_that_does_not_sniff_as_an_image
       txt = write_tmp("not-image.txt", "not an image")
-      assert_raises(UnsupportedFormatError) { SafeImage.convert(txt, tmp_path("sniffed.jpg"), format: "jpg") }
+      assert_raises(UnsupportedFormatError) do
+        SafeImage.convert(input: txt, output: tmp_path("sniffed.jpg"), format: "jpg")
+      end
     end
 
     def test_convert_rejects_unsupported_output_format
-      assert_raises(UnsupportedFormatError) { SafeImage.convert(JPG, tmp_path("bad.bmp"), format: "bmp") }
+      assert_raises(UnsupportedFormatError) do
+        SafeImage.convert(input: JPG, output: tmp_path("bad.bmp"), format: "bmp")
+      end
     end
   end
 end

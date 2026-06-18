@@ -17,7 +17,7 @@ module SafeImage
     end
 
     def test_convert_favicon_extracts_largest_entry
-      result = SafeImage.convert_favicon_to_png(FAVICON, tmp_path("favicon.png"))
+      result = SafeImage.convert_favicon_to_png(input: FAVICON, output: tmp_path("favicon.png"))
 
       assert_result result, width: 256, height: 256, format: "png"
       assert_equal :png, SafeImage.type(tmp_path("favicon.png"))
@@ -29,7 +29,7 @@ module SafeImage
       ico = write_ico("png_payload.ico", [{ width: 64, height: 64, payload: File.binread(small) }])
 
       assert_equal [64, 64], SafeImage.size(ico)
-      result = SafeImage.convert_favicon_to_png(ico, tmp_path("out.png"))
+      result = SafeImage.convert_favicon_to_png(input: ico, output: tmp_path("out.png"))
       assert_result result, width: 64, height: 64, format: "png"
     end
 
@@ -86,7 +86,7 @@ module SafeImage
       ico = write_ico("bomb.ico", [{ width: 256, height: 256, payload: fake_png }])
 
       assert_raises(LimitError) { SafeImage.probe(ico) }
-      assert_raises(LimitError) { SafeImage.convert_favicon_to_png(ico, tmp_path("bomb.png")) }
+      assert_raises(LimitError) { SafeImage.convert_favicon_to_png(input: ico, output: tmp_path("bomb.png")) }
     end
 
     def test_rejects_garbage
@@ -103,7 +103,7 @@ module SafeImage
       payload = [40, 2, 4, 1, 32, 3, 0, 0, 0, 0, 0].pack("Vl<l<vvVVl<l<VV") + "\0" * 64
       ico = write_ico("rle.ico", [{ width: 2, height: 2, payload: payload }])
 
-      assert_raises(InvalidImageError) { SafeImage.convert_favicon_to_png(ico, tmp_path("rle.png")) }
+      assert_raises(InvalidImageError) { SafeImage.convert_favicon_to_png(input: ico, output: tmp_path("rle.png")) }
     end
 
     def test_rejects_oversized_files

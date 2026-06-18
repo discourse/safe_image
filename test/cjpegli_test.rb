@@ -12,7 +12,14 @@ module SafeImage
     # be made genuinely unavailable from a test.
     def test_convert_uses_the_native_encoder_when_cjpegli_is_unavailable
       JpegliBackend.stub(:available?, false) do
-        result = SafeImage.convert(PNG, tmp_path("native.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+        result =
+          SafeImage.convert(
+            input: PNG,
+            output: tmp_path("native.jpg"),
+            format: "jpg",
+            quality: 85,
+            max_pixels: PNG_PIXELS
+          )
 
         assert_equal "libvips-direct", result.backend
         assert_jpeg_magic tmp_path("native.jpg")
@@ -22,7 +29,7 @@ module SafeImage
     def test_imagemagick_backend_produces_jpeg_without_cjpegli
       configure_safe_image(backend: :imagemagick)
       out = tmp_path("magick.jpg")
-      result = SafeImage.convert(PNG, out, format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      result = SafeImage.convert(input: PNG, output: out, format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
 
       assert_equal "imagemagick", result.backend
       assert_jpeg_magic out
@@ -31,16 +38,16 @@ module SafeImage
     def test_convert_uses_cjpegli_for_png_input_after_native_decode
       require_cjpegli!
       out = tmp_path("converted.jpg")
-      result = SafeImage.convert(PNG, out, format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      result = SafeImage.convert(input: PNG, output: out, format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
 
       assert_equal "libvips-direct+cjpegli", result.backend
       assert_jpeg_magic out
       assert_equal :jpeg, SafeImage.type(out, max_pixels: PNG_PIXELS)
     end
 
-    def test_convert_to_jpeg_respects_pixel_cap_before_cjpegli_encode
+    def test_convert_respects_pixel_cap_before_cjpegli_encode
       assert_raises(LimitError) do
-        SafeImage.convert(PNG, tmp_path("too-big.jpg"), format: "jpg", quality: 85, max_pixels: 1)
+        SafeImage.convert(input: PNG, output: tmp_path("too-big.jpg"), format: "jpg", quality: 85, max_pixels: 1)
       end
     end
 
@@ -48,7 +55,13 @@ module SafeImage
       require_cjpegli!
       result =
         heic_or_skip do
-          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+          SafeImage.convert(
+            input: HEIC,
+            output: tmp_path("heic.jpg"),
+            format: "jpg",
+            quality: 85,
+            max_pixels: PNG_PIXELS
+          )
         end
 
       refute_equal "cjpegli", result.backend, "cjpegli cannot decode HEIC directly"
@@ -75,7 +88,7 @@ module SafeImage
     def test_crop_uses_cjpegli_when_installed
       require_cjpegli!
       out = tmp_path("crop.jpg")
-      result = SafeImage.crop(JPG, out, 200, 160, max_pixels: JPG_PIXELS)
+      result = SafeImage.crop(input: JPG, output: out, width: 200, height: 160, max_pixels: JPG_PIXELS)
 
       assert_includes result.backend, "cjpegli"
       assert_result result, width: 200, height: 160
@@ -85,7 +98,7 @@ module SafeImage
     def test_downsize_uses_cjpegli_when_installed
       require_cjpegli!
       out = tmp_path("down.jpg")
-      result = SafeImage.downsize(PNG, out, "320x200>", max_pixels: PNG_PIXELS)
+      result = SafeImage.downsize(input: PNG, output: out, dimensions: "320x200>", max_pixels: PNG_PIXELS)
 
       assert_includes result.backend, "cjpegli"
       assert_jpeg_magic out

@@ -29,7 +29,7 @@ module SafeImage
       skip "jpegtran unavailable" unless Runner.available?("jpegtran")
       path = oriented_jpg("aligned.jpg", 6, width: 192, height: 128)
 
-      result = SafeImage.fix_orientation(path, tmp_path("fixed.jpg"))
+      result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
       assert_equal "jpegtran", result.backend
       assert_result result, width: 128, height: 192, format: "jpg"
@@ -39,7 +39,7 @@ module SafeImage
     def test_fix_orientation_reencodes_non_aligned_jpegs
       path = oriented_jpg("ragged.jpg", 6, width: 201, height: 131)
 
-      result = SafeImage.fix_orientation(path, tmp_path("fixed.jpg"))
+      result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
       assert_equal "libvips-direct", result.backend
       assert_result result, width: 131, height: 201, format: "jpg"
@@ -52,30 +52,29 @@ module SafeImage
     def test_handles_large_oriented_jpegs_outside_the_sequential_window
       path = oriented_jpg("big6.jpg", 6, width: 1021, height: 1023)
 
-      result = SafeImage.fix_orientation(path, tmp_path("big_fixed.jpg"))
+      result = SafeImage.fix_orientation(input: path, output: tmp_path("big_fixed.jpg"))
       assert_equal "libvips-direct", result.backend
       assert_result result, width: 1023, height: 1021, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("big_fixed.jpg"))
 
-      result = SafeImage.convert(path, tmp_path("big_conv.jpg"), format: "jpg", optimize: false)
+      result = SafeImage.convert(input: path, output: tmp_path("big_conv.jpg"), format: "jpg", optimize: false)
       assert_result result, width: 1023, height: 1021, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("big_conv.jpg"))
     end
 
-    def test_fix_orientation_in_place
-      path = oriented_jpg("inplace.jpg", 6, width: 192, height: 128)
+    def test_fix_orientation_requires_distinct_input_and_output
+      path = oriented_jpg("same-path.jpg", 6, width: 192, height: 128)
 
-      SafeImage.fix_orientation(path)
-
-      assert_equal 1, SafeImage.orientation(path)
-      assert_equal [128, 192], SafeImage.size(path)
+      assert_raises(UnsafePathError) { SafeImage.fix_orientation(input: path, output: path) }
+      assert_equal 6, SafeImage.orientation(path)
+      assert_equal [192, 128], SafeImage.size(path)
     end
 
     def test_fix_orientation_with_the_imagemagick_backend
       path = oriented_jpg("im.jpg", 6, width: 192, height: 128)
 
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.fix_orientation(path, tmp_path("fixed.jpg"))
+      result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
       assert_equal "imagemagick", result.backend
       assert_result result, width: 128, height: 192, format: "jpg"
@@ -84,7 +83,9 @@ module SafeImage
     def test_fix_orientation_rejects_invalid_quality
       path = oriented_jpg("q.jpg", 6, width: 201, height: 131)
 
-      assert_raises(ArgumentError) { SafeImage.fix_orientation(path, tmp_path("fixed.jpg"), quality: 9000) }
+      assert_raises(ArgumentError) do
+        SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"), quality: 9000)
+      end
     end
   end
 end

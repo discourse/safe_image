@@ -37,8 +37,19 @@ module SafeImage
       reject_symlink_components!(path.dirname)
       if File.exist?(path.to_s)
         raise UnsafePathError, "output path is a symlink: #{path}" if File.lstat(path.to_s).symlink?
+        raise UnsafePathError, "output path is a directory: #{path}" if File.directory?(path.to_s)
       end
       path
+    end
+
+    def ensure_distinct_file_paths!(input, output)
+      input = ensure_regular_file!(input)
+      output = ensure_safe_output_path!(output)
+      same_path = input.to_s == output.to_s
+      same_file = output.exist? && File.identical?(input.to_s, output.to_s)
+      raise UnsafePathError, "input and output must be different paths" if same_path || same_file
+
+      [input, output]
     end
 
     def ensure_imagemagick_safe!(path)

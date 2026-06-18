@@ -6,14 +6,16 @@ require "timeout"
 
 module SafeImage
   class CommandError < Error
-    attr_reader :command, :status, :stdout, :stderr
+    attr_reader :command, :status, :stdout, :stderr, :category, :operation
 
-    def initialize(message, command:, status: nil, stdout: "", stderr: "")
+    def initialize(message, command:, status: nil, stdout: "", stderr: "", category: :command, operation: nil)
       super(message)
       @command = command
       @status = status
       @stdout = stdout
       @stderr = stderr
+      @category = category&.to_sym
+      @operation = operation&.to_sym
     end
   end
 
@@ -70,7 +72,13 @@ module SafeImage
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           if remaining <= 0
             kill_process_group(wait_thr.pid)
-            raise CommandError.new("command timed out after #{timeout}s", command: argv, stdout: stdout, stderr: stderr)
+            raise CommandError.new(
+                    "command timed out after #{timeout}s",
+                    command: argv,
+                    stdout: stdout,
+                    stderr: stderr,
+                    category: :timeout
+                  )
           end
 
           readable, = IO.select(streams.keys, nil, nil, remaining)
@@ -87,7 +95,8 @@ module SafeImage
                         "command output exceeded #{MAX_OUTPUT_BYTES} bytes",
                         command: argv,
                         stdout: stdout,
-                        stderr: stderr
+                        stderr: stderr,
+                        category: :output_limit
                       )
               end
             rescue IO::WaitReadable
@@ -108,7 +117,13 @@ module SafeImage
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
           if remaining <= 0
             kill_process_group(wait_thr.pid)
-            raise CommandError.new("command timed out after #{timeout}s", command: argv, stdout: stdout, stderr: stderr)
+            raise CommandError.new(
+                    "command timed out after #{timeout}s",
+                    command: argv,
+                    stdout: stdout,
+                    stderr: stderr,
+                    category: :timeout
+                  )
           end
           status = wait_thr.join(remaining)&.value
         end
@@ -126,7 +141,8 @@ module SafeImage
               command: argv,
               status: status&.exitstatus,
               stdout: stdout,
-              stderr: stderr
+              stderr: stderr,
+              category: :exit_status
             )
     end
 

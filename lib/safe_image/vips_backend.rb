@@ -25,7 +25,7 @@ module SafeImage
       # no-op scale of 1.0 — so the output is metadata-stripped rather than a
       # verbatim copy of the untrusted input bytes.
       scale = [scale, 1.0].min
-      Native.resize(input.to_s, output.to_s, scale, normalized_format(format), Integer(quality), max_pixels)
+      Native.resize(input.to_s, output.to_s, scale, Formats.normalize(format), Integer(quality), max_pixels)
     end
 
     def dominant_color(input, max_pixels: nil)
@@ -83,11 +83,6 @@ module SafeImage
         height: size,
         duration_ms: (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
       }
-    end
-
-    def normalized_format(format)
-      format = format.to_s.downcase
-      format == "jpeg" ? "jpg" : format
     end
 
     def scale_for(width, height, dimensions)

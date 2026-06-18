@@ -39,7 +39,7 @@ module SafeImage
       )
 
       actual = tmp_path("actual.jpg")
-      SafeImage.resize(JPG, actual, 600, 400, optimize: false)
+      SafeImage.resize(input: JPG, output: actual, width: 600, height: 400, optimize: false)
 
       assert_pixel_identical expected, actual
     end
@@ -67,7 +67,7 @@ module SafeImage
       )
 
       actual = tmp_path("actual.jpg")
-      SafeImage.crop(JPG, actual, 400, 400, optimize: false)
+      SafeImage.crop(input: JPG, output: actual, width: 400, height: 400, optimize: false)
 
       assert_pixel_identical expected, actual
     end
@@ -91,7 +91,7 @@ module SafeImage
       )
 
       actual = tmp_path("actual.png")
-      SafeImage.downsize(PNG, actual, "50%", optimize: false)
+      SafeImage.downsize(input: PNG, output: actual, dimensions: "50%", optimize: false)
 
       assert_pixel_identical expected, actual
     end

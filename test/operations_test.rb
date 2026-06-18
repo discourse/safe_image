@@ -123,9 +123,9 @@ module SafeImage
     end
 
     def test_resize_crop_and_downsize_use_the_configured_backend
-      resize = SafeImage.resize(JPG, tmp_path("r.jpg"), 600, 400, max_pixels: JPG_PIXELS)
-      crop = SafeImage.crop(JPG, tmp_path("c.jpg"), 400, 400, max_pixels: JPG_PIXELS)
-      downsize = SafeImage.downsize(PNG, tmp_path("d.png"), "50%", max_pixels: PNG_PIXELS)
+      resize = SafeImage.resize(input: JPG, output: tmp_path("r.jpg"), width: 600, height: 400, max_pixels: JPG_PIXELS)
+      crop = SafeImage.crop(input: JPG, output: tmp_path("c.jpg"), width: 400, height: 400, max_pixels: JPG_PIXELS)
+      downsize = SafeImage.downsize(input: PNG, output: tmp_path("d.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
 
       assert_match(/\Alibvips-direct/, resize.backend)
       assert_match(/\Alibvips-direct/, crop.backend)
@@ -135,19 +135,22 @@ module SafeImage
     end
 
     def test_resize_of_ico_fails_closed_on_the_vips_backend
-      assert_raises(UnsupportedFormatError) { SafeImage.resize(ICO, tmp_path("ico.png"), 16, 16) }
+      assert_raises(UnsupportedFormatError) do
+        SafeImage.resize(input: ICO, output: tmp_path("ico.png"), width: 16, height: 16)
+      end
     end
 
     def test_resize_of_ico_with_the_imagemagick_backend
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.resize(ICO, tmp_path("ico.png"), 16, 16)
+      result = SafeImage.resize(input: ICO, output: tmp_path("ico.png"), width: 16, height: 16)
 
       assert_equal "imagemagick", result.backend
     end
 
     def test_gif_resize_skips_the_optimizer_instead_of_erroring
       gif_save_or_skip do
-        result = SafeImage.resize(GIF, tmp_path("small.gif"), 64, 64, max_pixels: PNG_PIXELS)
+        result =
+          SafeImage.resize(input: GIF, output: tmp_path("small.gif"), width: 64, height: 64, max_pixels: PNG_PIXELS)
         assert_result result, width: 64, height: 64, format: "gif"
       end
     end
@@ -162,57 +165,66 @@ module SafeImage
 
     def test_crop_with_the_imagemagick_backend
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.crop(JPG, tmp_path("crop.jpg"), 400, 400, max_pixels: JPG_PIXELS)
+      result = SafeImage.crop(input: JPG, output: tmp_path("crop.jpg"), width: 400, height: 400, max_pixels: JPG_PIXELS)
       assert_result result, width: 400, height: 400, format: "jpg"
     end
 
     def test_crop_with_the_vips_backend
-      result = SafeImage.crop(JPG, tmp_path("crop.jpg"), 400, 400, max_pixels: JPG_PIXELS)
+      result = SafeImage.crop(input: JPG, output: tmp_path("crop.jpg"), width: 400, height: 400, max_pixels: JPG_PIXELS)
       assert_result result, width: 400, height: 400, format: "jpg"
     end
 
     def test_downsize_by_percentage_with_the_imagemagick_backend
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.downsize(PNG, tmp_path("down.png"), "50%", max_pixels: PNG_PIXELS)
+      result = SafeImage.downsize(input: PNG, output: tmp_path("down.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
       assert_result result, width: 1016, height: 656, format: "png"
     end
 
     def test_downsize_by_percentage_with_the_vips_backend
-      result = SafeImage.downsize(PNG, tmp_path("down.png"), "50%", max_pixels: PNG_PIXELS)
+      result = SafeImage.downsize(input: PNG, output: tmp_path("down.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
       assert_result result, width: 1016, height: 656, format: "png"
     end
 
     def test_downsize_to_bounding_box
-      result = SafeImage.downsize(PNG, tmp_path("down.png"), "100x100>", max_pixels: PNG_PIXELS)
+      result =
+        SafeImage.downsize(input: PNG, output: tmp_path("down.png"), dimensions: "100x100>", max_pixels: PNG_PIXELS)
       assert_result result, width: 100, height: 65, format: "png"
     end
 
     def test_downsize_to_target_pixel_count
-      result = SafeImage.downsize(PNG, tmp_path("down.png"), "400000@", max_pixels: PNG_PIXELS)
+      result =
+        SafeImage.downsize(input: PNG, output: tmp_path("down.png"), dimensions: "400000@", max_pixels: PNG_PIXELS)
       assert_result result, width: 787, height: 508, format: "png"
     end
 
     def test_convert_png_to_jpeg
-      result = SafeImage.convert(PNG, tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      result =
+        SafeImage.convert(input: PNG, output: tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
       assert_result result, width: 2032, height: 1312, format: "jpg"
     end
 
     def test_convert_heic_to_jpeg
       result =
         heic_or_skip do
-          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+          SafeImage.convert(
+            input: HEIC,
+            output: tmp_path("heic.jpg"),
+            format: "jpg",
+            quality: 85,
+            max_pixels: PNG_PIXELS
+          )
         end
       assert_result result, width: 846, height: 1129, format: "jpg"
     end
 
     def test_convert_favicon_to_png
-      result = SafeImage.convert_favicon_to_png(ICO, tmp_path("ico.png"))
+      result = SafeImage.convert_favicon_to_png(input: ICO, output: tmp_path("ico.png"))
       assert_result result, width: 1, height: 1, format: "png"
     end
 
     def test_convert_favicon_to_png_with_the_imagemagick_backend
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.convert_favicon_to_png(ICO, tmp_path("ico.png"))
+      result = SafeImage.convert_favicon_to_png(input: ICO, output: tmp_path("ico.png"))
 
       assert_equal "imagemagick", result.backend
       assert_result result, width: 1, height: 1, format: "png"

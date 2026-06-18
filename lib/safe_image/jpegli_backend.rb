@@ -1,14 +1,10 @@
 # frozen_string_literal: true
 
-require "fileutils"
-require "pathname"
-require "tempfile"
-
 module SafeImage
   module JpegliBackend
     module_function
 
-    DIRECT_INPUTS = %w[png].freeze
+    DIRECT_INPUTS = Formats::CJPEGLI_DIRECT_INPUTS
     CHROMA_SUBSAMPLING = %w[420 422 444].freeze
     DEFAULT_QUALITY = 85
 
@@ -17,7 +13,7 @@ module SafeImage
     end
 
     def suitable_direct_input?(input)
-      DIRECT_INPUTS.include?(normalized_ext(input))
+      Formats.cjpegli_direct_input?(normalized_ext(input))
     end
 
     def convert(input:, output:, quality: DEFAULT_QUALITY, chroma_subsampling: :auto, timeout: Runner::DEFAULT_TIMEOUT)
@@ -63,37 +59,32 @@ module SafeImage
       quality = validate_quality!(quality)
       chroma_subsampling = validate_chroma_subsampling!(chroma_subsampling, input_format: input_format)
 
-      tmp = Tempfile.new([output_path.basename(".*").to_s, ".cjpegli.jpg"], output_path.dirname.to_s)
-      tmp_path = Pathname.new(tmp.path)
-      tmp.close
+      info =
+        AtomicOutput.replace(output_path, suffix: ".cjpegli.jpg") do |tmp_path|
+          argv = [
+            "cjpegli",
+            input.to_s,
+            tmp_path.to_s,
+            "--quality=#{quality}",
+            "--chroma_subsampling=#{chroma_subsampling}"
+          ]
+          Runner.run!(argv, timeout: timeout, read: [input.to_s], write: [output_path.dirname.to_s])
+          raise Error, "cjpegli did not create output" unless tmp_path.file? && File.size(tmp_path).positive?
 
-      begin
-        argv = [
-          "cjpegli",
-          input.to_s,
-          tmp_path.to_s,
-          "--quality=#{quality}",
-          "--chroma_subsampling=#{chroma_subsampling}"
-        ]
-        Runner.run!(argv, timeout: timeout, read: [input.to_s], write: [output_path.dirname.to_s])
-        raise Error, "cjpegli did not create output" unless tmp_path.file? && File.size(tmp_path).positive?
-        FileUtils.mv(tmp_path, output_path)
-
-        # cjpegli works without libvips; fall back to identify for the
-        # output dimensions when the native header read is unavailable.
-        info = VipsGlue.available? ? Native.probe(output_path.to_s) : ImageMagickBackend.probe(output_path.to_s)
-        {
-          input_format: input_format,
-          output_format: "jpg",
-          width: info.fetch(:width),
-          height: info.fetch(:height),
-          duration_ms: info.fetch(:duration_ms),
-          encoder: "cjpegli",
-          chroma_subsampling: chroma_subsampling
-        }
-      ensure
-        FileUtils.rm_f(tmp_path)
-      end
+          # cjpegli works without libvips; fall back to identify for the
+          # output dimensions when the native header read is unavailable.
+          info = VipsGlue.available? ? Native.probe(tmp_path.to_s) : ImageMagickBackend.probe(tmp_path.to_s)
+          {
+            input_format: input_format,
+            output_format: "jpg",
+            width: info.fetch(:width),
+            height: info.fetch(:height),
+            duration_ms: info.fetch(:duration_ms),
+            encoder: "cjpegli",
+            chroma_subsampling: chroma_subsampling
+          }
+        end
+      info
     end
 
     def validate_quality!(quality)
@@ -120,8 +111,7 @@ module SafeImage
     end
 
     def normalized_ext(path)
-      ext = File.extname(path.to_s).delete_prefix(".").downcase
-      ext == "jpeg" ? "jpg" : ext
+      Formats.extension(path)
     end
   end
 end

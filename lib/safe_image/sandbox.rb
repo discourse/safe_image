@@ -30,14 +30,92 @@ module SafeImage
       crop
       downsize
       convert
-      convert_to_jpeg
       fix_orientation
       convert_favicon_to_png
       frame_count
       animated?
       letter_avatar
-      optimize_image!
     ].freeze
+
+    METADATA_INPUT = ->(request) { [Array(request[:args]).first] }
+    KEYWORD_INPUT = ->(request) { [request.dig(:kwargs, :input)] }
+    KEYWORD_OUTPUT = ->(request) { [request.dig(:kwargs, :output)] }
+    NO_PATHS = ->(_request) { [] }
+
+    OPERATION_PATHS = {
+      "probe" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "type" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "size" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "dimensions" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "info" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "orientation" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "dominant_color" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "frame_count" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "animated?" => {
+        read: METADATA_INPUT,
+        write: NO_PATHS
+      },
+      "thumbnail" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "optimize" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "resize" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "crop" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "downsize" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "convert" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "fix_orientation" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "convert_favicon_to_png" => {
+        read: KEYWORD_INPUT,
+        write: KEYWORD_OUTPUT
+      },
+      "letter_avatar" => {
+        read: NO_PATHS,
+        write: KEYWORD_OUTPUT
+      }
+    }.freeze
 
     def available?
       require "landlock"
@@ -121,7 +199,8 @@ module SafeImage
               command: argv,
               status: e.status&.exitstatus,
               stdout: e.stdout,
-              stderr: e.stderr
+              stderr: e.stderr,
+              category: :sandbox_command
             )
     end
 
@@ -160,9 +239,8 @@ module SafeImage
       return true if operation == "thumbnail"
       return false unless path.is_a?(String)
 
-      ext = File.extname(PathSafety.local_path(path)).delete_prefix(".").downcase
-      ext = "jpg" if ext == "jpeg"
-      %w[jpg png gif webp heic heif avif jxl].include?(ext)
+      ext = Formats.extension(path)
+      Formats.native_input?(ext)
     rescue Error, ArgumentError
       false
     end
@@ -176,7 +254,7 @@ module SafeImage
       when "probe"
         result_from_helper_probe(args.fetch(0), max_pixels)
       when "type"
-        SafeImage.fastimage_type(result_from_helper_probe(args.fetch(0), max_pixels).input_format)
+        SafeImage.__send__(:fastimage_type, result_from_helper_probe(args.fetch(0), max_pixels).input_format)
       when "size", "dimensions"
         result = result_from_helper_probe(args.fetch(0), max_pixels)
         [result.width, result.height]
@@ -184,7 +262,7 @@ module SafeImage
         result = result_from_helper_probe(args.fetch(0), max_pixels)
         Info.new(
           path: result.input,
-          type: SafeImage.fastimage_type(result.input_format),
+          type: SafeImage.__send__(:fastimage_type, result.input_format),
           width: result.width,
           height: result.height,
           size: [result.width, result.height],
@@ -224,19 +302,19 @@ module SafeImage
     end
 
     def native_helper_thumbnail!(kwargs, max_pixels)
-      input = PathSafety.ensure_regular_file!(kwargs.fetch(:input)).to_s
-      output = PathSafety.ensure_safe_output_path!(kwargs.fetch(:output)).to_s
+      input, output = PathSafety.ensure_distinct_file_paths!(kwargs.fetch(:input), kwargs.fetch(:output))
+      input = input.to_s
+      output = output.to_s
       width = Integer(kwargs.fetch(:width))
       height = Integer(kwargs.fetch(:height))
       quality = Integer(kwargs.fetch(:quality, 85))
-      format = (kwargs[:format] || File.extname(output).delete_prefix(".")).to_s.downcase
-      format = "jpg" if format == "jpeg"
+      format = Formats.normalize(kwargs[:format] || File.extname(output).delete_prefix("."))
       FileUtils.mkdir_p(File.dirname(output))
       info = NativeHelper.thumbnail(input, output, width, height, format, quality, max_pixels)
       opt_info = nil
-      if kwargs[:optimize] && Processor::OPTIMIZABLE_OUTPUTS.include?(format)
+      if kwargs[:optimize] && Formats.optimizable_output?(format)
         opt_info =
-          Optimizer.optimize(
+          optimize_existing_output(
             output,
             mode: kwargs.fetch(:optimize_mode, :lossless),
             strip_metadata: true,
@@ -256,6 +334,12 @@ module SafeImage
         duration_ms: info.fetch(:duration_ms),
         optimizer: opt_info&.fetch(:tools, nil)
       )
+    end
+
+    def optimize_existing_output(output, **options)
+      AtomicOutput.replace(output, suffix: ".safe-image#{File.extname(output)}") do |tmp_path|
+        Optimizer.optimize(input: output, output: tmp_path, **options)
+      end
     end
 
     def run_worker!(operation, request)
@@ -314,8 +398,8 @@ module SafeImage
         payload = JSON.parse(ARGV.fetch(0), symbolize_names: true)
         operation = payload.fetch(:operation).to_s
         allowed_operations = %w[
-          probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
-          convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
+          probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert fix_orientation
+          convert_favicon_to_png frame_count animated? letter_avatar
         ]
         raise ArgumentError, "unsupported sandbox operation: #{operation}" unless allowed_operations.include?(operation)
 
@@ -347,6 +431,8 @@ module SafeImage
             error[:status] = e.status
             error[:stdout] = e.stdout
             error[:stderr] = e.stderr
+            error[:category] = e.category
+            error[:operation] = e.operation
           end
           puts JSON.dump(error)
         end
@@ -386,7 +472,9 @@ module SafeImage
               command: [RbConfig.ruby, "-e", "..."],
               status: e.status&.exitstatus,
               stdout: e.stdout,
-              stderr: e.stderr
+              stderr: e.stderr,
+              category: :sandbox_worker,
+              operation: operation
             )
     end
 
@@ -406,7 +494,9 @@ module SafeImage
                   command: response[:command] || [],
                   status: response[:status],
                   stdout: response[:stdout].to_s,
-                  stderr: response[:stderr].to_s
+                  stderr: response[:stderr].to_s,
+                  category: response[:category],
+                  operation: response[:operation]
                 )
         end
         raise error_class, response.fetch(:message).to_s
@@ -453,70 +543,36 @@ module SafeImage
     end
 
     def sandbox_paths(request, operation)
-      read = []
-      write = []
-
-      values = []
-      values.concat(Array(request[:args]))
-      values.concat(Array(request.dig(:kwargs)&.values))
-      values.flatten.compact.each do |value|
-        next unless value.is_a?(String)
-        next if value.empty? || value.include?("\0")
-
-        expanded =
-          begin
-            File.expand_path(value)
-          rescue StandardError
-            next
-          end
-        if File.exist?(expanded)
-          read << expanded
-        elsif looks_like_path?(value)
-          write << File.dirname(expanded)
-        end
-      end
-
-      # Positional Discourse-compatible APIs use the first argument as input and
-      # the second as output. Grant write access to the output and its parent
-      # even when a stale output file already exists; the generic inference above
-      # intentionally treats existing paths as read-only unless an operation tells
-      # us otherwise.
-      if positional_output_path_operation?(operation)
-        output = Array(request[:args])[1]
-        if output.is_a?(String) && !output.empty? && !output.include?("\0")
-          expanded = File.expand_path(output)
-          write << expanded if File.exist?(expanded)
-          write << File.dirname(expanded)
-        end
-      end
-
-      # Common keyword names for generated outputs. Include the containing dir
-      # even when a stale file already exists, because operations may replace it.
-      kwargs = request[:kwargs] || {}
-      %i[output to path].each do |key|
-        next unless kwargs[key].is_a?(String)
-        write << File.dirname(File.expand_path(kwargs[key]))
-      end
-
-      # In-place mutators need write permission for an existing input path too.
-      if %w[optimize optimize_image! fix_orientation].include?(operation.to_s)
-        first = Array(request[:args]).first
-        if first.is_a?(String) && File.exist?(first)
-          expanded = File.expand_path(first)
-          write << expanded
-          write << File.dirname(expanded)
-        end
-      end
-
+      rules =
+        OPERATION_PATHS.fetch(operation.to_s) { raise ArgumentError, "unsupported sandbox operation: #{operation}" }
+      read = expand_read_paths(rules.fetch(:read).call(request))
+      write = expand_write_paths(rules.fetch(:write).call(request))
       { read: read.uniq, write: write.uniq }
     end
 
-    def positional_output_path_operation?(operation)
-      %w[resize crop downsize convert convert_to_jpeg convert_favicon_to_png fix_orientation].include?(operation.to_s)
+    def expand_read_paths(paths)
+      Array(paths).flatten.compact.filter_map do |path|
+        next unless path.is_a?(String)
+        next if path.empty? || path.include?("\0")
+
+        File.expand_path(path)
+      rescue StandardError
+        nil
+      end
     end
 
-    def looks_like_path?(value)
-      value.start_with?("/", "./", "../") || File.extname(value) != ""
+    def expand_write_paths(paths)
+      Array(paths).flatten.compact.flat_map do |path|
+        next [] unless path.is_a?(String)
+        next [] if path.empty? || path.include?("\0")
+
+        expanded = File.expand_path(path)
+        targets = [File.dirname(expanded)]
+        targets << expanded if File.exist?(expanded)
+        targets
+      rescue StandardError
+        []
+      end
     end
 
     def runtime_read_paths

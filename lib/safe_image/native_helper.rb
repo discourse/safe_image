@@ -139,7 +139,13 @@ module SafeImage
       when "InvalidImageError", ""
         raise InvalidImageError, message
       else
-        raise CommandError.new(message, command: [HELPER], status: status.exitstatus)
+        raise CommandError.new(
+                message,
+                command: [HELPER],
+                status: status.exitstatus,
+                category: :native_helper,
+                operation: command
+              )
       end
     end
 
@@ -149,7 +155,12 @@ module SafeImage
 
     def write_paths(options)
       output = options[:output]
-      output ? [File.dirname(File.expand_path(output))] : []
+      return [] unless output
+
+      expanded = File.expand_path(output)
+      paths = [File.dirname(expanded)]
+      paths << expanded if File.exist?(expanded)
+      paths
     end
   end
 end

@@ -10,7 +10,10 @@ module SafeImage
         svg =
           write_tmp("masked.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><mask id="m"/></svg>')
 
-        error = assert_raises(UnsupportedFormatError) { SafeImage.resize(svg, tmp_path("masked.png"), 5, 5) }
+        error =
+          assert_raises(UnsupportedFormatError) do
+            SafeImage.resize(input: svg, output: tmp_path("masked.png"), width: 5, height: 5)
+          end
         assert_match(/unsupported input format/, error.message)
       end
     end
@@ -25,13 +28,13 @@ module SafeImage
       end
     end
 
-    def test_existing_positional_output_is_writable_inside_sandbox
+    def test_existing_keyword_output_is_writable_inside_sandbox
       skip "Landlock::SafeExec unavailable" unless SafeImage.sandbox_available?
       configure_safe_image(landlock: true)
       output = tmp_path("existing-output.png")
       FileUtils.cp(PNG, output)
 
-      SafeImage.resize(PNG, output, 10, 10, max_pixels: PNG_PIXELS, optimize: false)
+      SafeImage.resize(input: PNG, output: output, width: 10, height: 10, max_pixels: PNG_PIXELS, optimize: false)
 
       assert_equal [10, 10], SafeImage.size(output, max_pixels: PNG_PIXELS)
     end

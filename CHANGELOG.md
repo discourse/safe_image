@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0 - 2026-06-18]
 
 ### Removed (breaking)
 
@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implementation. Safe Image still supports bounded SVG metadata probing for
   local and remote `.svg` files, but applications that need to clean or inline
   user-supplied SVG content must use a dedicated sanitizer outside this gem.
+- Removed the compatibility/in-place file-writing APIs. `resize`, `crop`,
+  `downsize`, `convert`, `fix_orientation`, `convert_favicon_to_png`, and
+  `optimize` now require explicit, distinct `input:` and `output:` paths;
+  `optimize_image!` and `convert_to_jpeg` are gone.
 
 ## [0.3.0 - 2026-06-12]
 

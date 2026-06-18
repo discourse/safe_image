@@ -37,12 +37,12 @@ module SafeImage
       out[:probe_jpg] = SafeImage.probe(ENV["JPG"], max_pixels: 100_000_000).backend
       out[:probe_ico] = SafeImage.probe(ENV["ICO"]).backend
       out[:thumb] = SafeImage.thumbnail(input: ENV["JPG"], output: File.join(ENV["OUT"], "t.jpg"), width: 60, height: 40, max_pixels: 100_000_000).backend
-      out[:resize] = SafeImage.resize(ENV["PNG"], File.join(ENV["OUT"], "r.png"), 100, 65, max_pixels: 10_000_000).backend
-      out[:gif_convert] = SafeImage.convert(ENV["GIF"], File.join(ENV["OUT"], "g.png"), format: "png", max_pixels: 10_000_000).backend
+      out[:resize] = SafeImage.resize(input: ENV["PNG"], output: File.join(ENV["OUT"], "r.png"), width: 100, height: 65, max_pixels: 10_000_000).backend
+      out[:gif_convert] = SafeImage.convert(input: ENV["GIF"], output: File.join(ENV["OUT"], "g.png"), format: "png", max_pixels: 10_000_000).backend
       out[:dominant] = SafeImage.dominant_color(ENV["PNG"], max_pixels: 10_000_000)
       out[:dominant_ico] = SafeImage.dominant_color(ENV["ICO"])
       out[:avatar] = SafeImage.letter_avatar(output: File.join(ENV["OUT"], "a.png"), size: 64, background_rgb: [1, 2, 3], letter: "S").backend
-      out[:favicon] = SafeImage.convert_favicon_to_png(ENV["ICO"], File.join(ENV["OUT"], "f.png")).backend
+      out[:favicon] = SafeImage.convert_favicon_to_png(input: ENV["ICO"], output: File.join(ENV["OUT"], "f.png")).backend
       out[:frames] = SafeImage.frame_count(ENV["GIF"], max_pixels: 10_000_000)
       out[:orientation] = SafeImage.orientation(ENV["JPG"])
 

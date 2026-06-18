@@ -45,7 +45,7 @@ module SafeImage
     end
 
     # Extracts the largest icon and writes it as PNG. Returns an info hash in
-    # the shape DiscourseCompat.result_from_info expects.
+    # shape Operations.result_from_info expects.
     def convert_to_png(input, output, max_pixels: nil)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       data, entries = parse(input)
@@ -53,25 +53,27 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
 
       width = height = nil
-      if entry.png
-        # Enforce the pixel cap from the IHDR dimensions before the payload
-        # reaches a decoder.
-        validate_pixels!(*entry_dimensions(data, entry), max_pixels)
-        payload = data.byteslice(entry.offset, entry.size)
-        Tempfile.create(%w[safe-image-ico .png]) do |tmp|
-          tmp.binmode
-          tmp.write(payload)
-          tmp.close
-          # Sanitizing no-op resize: validates the PNG bytes, enforces the
-          # pixel cap and strips metadata on the way through libvips.
-          info = Native.resize(tmp.path, output, 1.0, "png", 100, max_pixels)
-          width = info.fetch(:width)
-          height = info.fetch(:height)
+      AtomicOutput.replace(output, suffix: ".safe-image.png") do |tmp_path|
+        if entry.png
+          # Enforce the pixel cap from the IHDR dimensions before the payload
+          # reaches a decoder.
+          validate_pixels!(*entry_dimensions(data, entry), max_pixels)
+          payload = data.byteslice(entry.offset, entry.size)
+          Tempfile.create(%w[safe-image-ico .png]) do |tmp|
+            tmp.binmode
+            tmp.write(payload)
+            tmp.close
+            # Sanitizing no-op resize: validates the PNG bytes, enforces the
+            # pixel cap and strips metadata on the way through libvips.
+            info = Native.resize(tmp.path, tmp_path.to_s, 1.0, "png", 100, max_pixels)
+            width = info.fetch(:width)
+            height = info.fetch(:height)
+          end
+        else
+          rgba, width, height = decode_rgba(data, entry)
+          validate_pixels!(width, height, max_pixels)
+          Native.png_from_rgba(rgba, width, height, tmp_path.to_s)
         end
-      else
-        rgba, width, height = decode_rgba(data, entry)
-        validate_pixels!(width, height, max_pixels)
-        Native.png_from_rgba(rgba, width, height, output)
       end
 
       {

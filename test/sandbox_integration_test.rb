@@ -50,46 +50,78 @@ module SafeImage
         )
       assert_result thumb, width: 600, height: 400
 
-      resized = SafeImage.resize(JPG, tmp_path("resize.jpg"), 600, 400, optimize: true, max_pixels: JPG_PIXELS)
+      resized =
+        SafeImage.resize(
+          input: JPG,
+          output: tmp_path("resize.jpg"),
+          width: 600,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result resized, width: 600, height: 400
     end
 
     def test_crop_with_both_backends
-      vips = SafeImage.crop(JPG, tmp_path("crop-vips.jpg"), 400, 400, optimize: true, max_pixels: JPG_PIXELS)
+      vips =
+        SafeImage.crop(
+          input: JPG,
+          output: tmp_path("crop-vips.jpg"),
+          width: 400,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result vips, width: 400, height: 400
 
       configure_safe_image(backend: :imagemagick, landlock: true)
-      im = SafeImage.crop(JPG, tmp_path("crop-im.jpg"), 400, 400, optimize: true, max_pixels: JPG_PIXELS)
+      im =
+        SafeImage.crop(
+          input: JPG,
+          output: tmp_path("crop-im.jpg"),
+          width: 400,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result im, width: 400, height: 400
     end
 
     def test_downsize_with_both_backends
-      vips = SafeImage.downsize(PNG, tmp_path("down-vips.png"), "50%", max_pixels: PNG_PIXELS)
+      vips =
+        SafeImage.downsize(input: PNG, output: tmp_path("down-vips.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
       assert_result vips, width: 1016, height: 656
 
       configure_safe_image(backend: :imagemagick, landlock: true)
-      im = SafeImage.downsize(PNG, tmp_path("down-im.png"), "50%", max_pixels: PNG_PIXELS)
+      im = SafeImage.downsize(input: PNG, output: tmp_path("down-im.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
       assert_result im, width: 1016, height: 656
     end
 
     def test_convert
-      png = SafeImage.convert(PNG, tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+      png =
+        SafeImage.convert(input: PNG, output: tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
       assert_result png, width: 2032, height: 1312
 
       heic =
         heic_or_skip do
-          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+          SafeImage.convert(
+            input: HEIC,
+            output: tmp_path("heic.jpg"),
+            format: "jpg",
+            quality: 85,
+            max_pixels: PNG_PIXELS
+          )
         end
       assert_result heic, width: 846, height: 1129
     end
 
     def test_fix_orientation
-      result = SafeImage.fix_orientation(JPG, tmp_path("oriented.jpg"), max_pixels: JPG_PIXELS)
+      result = SafeImage.fix_orientation(input: JPG, output: tmp_path("oriented.jpg"), max_pixels: JPG_PIXELS)
       assert_file_written result.output if result.respond_to?(:output) && result.output
     end
 
     def test_convert_favicon_to_png
-      result = SafeImage.convert_favicon_to_png(ICO, tmp_path("ico.png"), max_pixels: PNG_PIXELS)
+      result = SafeImage.convert_favicon_to_png(input: ICO, output: tmp_path("ico.png"), max_pixels: PNG_PIXELS)
       assert_result result, width: 1, height: 1
     end
 
@@ -129,28 +161,23 @@ module SafeImage
     def test_optimize
       jpg = tmp_path("opt.jpg")
       FileUtils.cp(JPG, jpg)
+      output = tmp_path("opt-out.jpg")
 
-      result = SafeImage.optimize(jpg, strict: true)
+      result = SafeImage.optimize(input: jpg, output: output, strict: true)
       assert_includes result.fetch("tools") { result.fetch(:tools) }, "jpegoptim"
     end
 
     def test_optimize_uprights_oriented_jpegs
       skip "jpegtran unavailable" unless Runner.available?("jpegtran")
       path = oriented_jpg("opt-oriented.jpg", 6, width: 192, height: 128)
+      output = tmp_path("opt-oriented-out.jpg")
 
-      result = SafeImage.optimize(path, strict: true)
+      result = SafeImage.optimize(input: path, output: output, strict: true)
 
       assert_includes result.fetch("tools") { result.fetch(:tools) }, "jpegtran"
-      assert_equal 1, SafeImage.orientation(path)
-      assert_equal [128, 192], SafeImage.size(path)
-    end
-
-    def test_optimize_image!
-      jpg = tmp_path("opt-bang.jpg")
-      FileUtils.cp(JPG, jpg)
-
-      result = SafeImage.optimize_image!(jpg, strict: true)
-      assert_includes result.fetch("tools") { result.fetch(:tools) }, "jpegoptim"
+      assert_equal 6, SafeImage.orientation(path)
+      assert_equal 1, SafeImage.orientation(output)
+      assert_equal [128, 192], SafeImage.size(output)
     end
   end
 end
