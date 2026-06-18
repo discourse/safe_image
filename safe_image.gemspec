@@ -44,8 +44,9 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rubocop-discourse", "~> 3.18"
   spec.add_development_dependency "syntax_tree", "~> 6.3"
   # Exercises the Landlock sandbox tests (they skip when unavailable);
-  # intentionally NOT a runtime dependency — see README.
-  spec.add_development_dependency "landlock", ">= 0.3"
+  # intentionally NOT a runtime dependency — see README. Version 0.3 is the
+  # public Landlock.capture!/exec API used by the sandbox.
+  spec.add_development_dependency "landlock", "~> 0.3", ">= 0.3.0"
 
   spec.metadata = {
     "homepage_uri" => spec.homepage,

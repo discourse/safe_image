@@ -11,7 +11,7 @@ module SafeImage
   class SandboxIntegrationTest < TestCase
     def setup
       super
-      skip "Landlock::SafeExec unavailable" unless SafeImage.sandbox_available?
+      skip "Landlock unavailable" unless SafeImage.sandbox_available?
       configure_safe_image(landlock: true)
     end
 

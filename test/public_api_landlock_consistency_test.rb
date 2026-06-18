@@ -29,7 +29,7 @@ module SafeImage
     end
 
     def test_existing_keyword_output_is_writable_inside_sandbox
-      skip "Landlock::SafeExec unavailable" unless SafeImage.sandbox_available?
+      skip "Landlock unavailable" unless SafeImage.sandbox_available?
       configure_safe_image(landlock: true)
       output = tmp_path("existing-output.png")
       FileUtils.cp(PNG, output)

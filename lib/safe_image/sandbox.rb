@@ -26,51 +26,27 @@ module SafeImage
     end
 
     def landlock_supported?
-      defined?(Landlock::SafeExec) ? Landlock::SafeExec.supported? : Landlock.supported?
+      Landlock.supported?
     end
 
     def landlock_command_error
-      defined?(Landlock::SafeExec::CommandError) ? Landlock::SafeExec::CommandError : Landlock::CommandError
+      Landlock::CommandError
     end
 
     def landlock_abi
-      Landlock.respond_to?(:abi_version) ? Landlock.abi_version : 0
+      Landlock.abi_version
     end
 
     def default_read_paths
-      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:default_read_paths)
-        Landlock::SafeExec.default_read_paths
-      else
-        %w[/usr /lib /lib64 /etc /bin /sbin /opt].select { |path| File.exist?(path) }
-      end
+      %w[/usr /lib /lib64 /etc /bin /sbin /opt].select { |path| File.exist?(path) }
     end
 
     def default_execute_paths
-      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:default_execute_paths)
-        Landlock::SafeExec.default_execute_paths
-      else
-        %w[/usr /lib /lib64 /bin /sbin /opt].select { |path| File.exist?(path) }
-      end
+      %w[/usr /lib /lib64 /bin /sbin /opt].select { |path| File.exist?(path) }
     end
 
     def landlock_capture!(argv, **options)
-      if defined?(Landlock::SafeExec)
-        inherit_env = options.delete(:unsetenv_others)
-        options[:inherit_env] = !inherit_env unless inherit_env.nil?
-        Landlock::SafeExec.capture!(*argv.map(&:to_s), **options)
-      else
-        Landlock.capture!(argv.map(&:to_s), allow_all_known: true, **options)
-      end
-    end
-
-    def landlock_exec(argv, **options)
-      if defined?(Landlock::SafeExec) && Landlock::SafeExec.respond_to?(:exec)
-        inherit_env = options.delete(:unsetenv_others)
-        options[:inherit_env] = !inherit_env unless inherit_env.nil?
-        Landlock::SafeExec.exec(*argv.map(&:to_s), **options)
-      else
-        Landlock.exec(argv.map(&:to_s), allow_all_known: true, **options)
-      end
+      Landlock.capture!(argv.map(&:to_s), allow_all_known: true, **options)
     end
 
     def capture_command!(argv, read:, write:, timeout: Runner::DEFAULT_TIMEOUT, env: nil, rlimits: DEFAULT_RLIMITS)
