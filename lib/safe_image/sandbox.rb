@@ -298,6 +298,19 @@ module SafeImage
           end
         end
 
+        def deep_encode_symbols(value)
+          case value
+          when Symbol
+            { __sym__: value.to_s }
+          when Hash
+            value.transform_values { |v| deep_encode_symbols(v) }
+          when Array
+            value.map { |v| deep_encode_symbols(v) }
+          else
+            value
+          end
+        end
+
         payload = JSON.parse(ARGV.fetch(0), symbolize_names: true)
         operation = payload.fetch(:operation).to_s
         allowed_operations = %w[
@@ -317,14 +330,25 @@ module SafeImage
           max_pixels: config.fetch(:max_pixels)
         )
 
-        result = SafeImage.__send__(operation, *args, **kwargs)
+        begin
+          result = SafeImage.__send__(operation, *args, **kwargs)
 
-        if defined?(SafeImage::Result) && result.is_a?(SafeImage::Result)
-          puts JSON.dump({ __type: "Result", data: result.to_h })
-        elsif defined?(SafeImage::Info) && result.is_a?(SafeImage::Info)
-          puts JSON.dump({ __type: "Info", data: result.to_h })
-        else
-          puts JSON.dump({ __type: "Value", data: result })
+          if defined?(SafeImage::Result) && result.is_a?(SafeImage::Result)
+            puts JSON.dump({ __type: "Result", data: deep_encode_symbols(result.to_h) })
+          elsif defined?(SafeImage::Info) && result.is_a?(SafeImage::Info)
+            puts JSON.dump({ __type: "Info", data: deep_encode_symbols(result.to_h) })
+          else
+            puts JSON.dump({ __type: "Value", data: deep_encode_symbols(result) })
+          end
+        rescue SafeImage::Error => e
+          error = { __type: "Error", class: e.class.name, message: e.message }
+          if defined?(SafeImage::CommandError) && e.is_a?(SafeImage::CommandError)
+            error[:command] = e.command
+            error[:status] = e.status
+            error[:stdout] = e.stdout
+            error[:stderr] = e.stderr
+          end
+          puts JSON.dump(error)
         end
       RUBY
 
@@ -371,12 +395,33 @@ module SafeImage
     def decode_payload(response)
       case response[:__type]
       when "Result"
-        Result.new(**response.fetch(:data))
+        Result.new(**deep_decode_symbols(response.fetch(:data)))
       when "Info"
-        Info.new(**response.fetch(:data))
+        Info.new(**deep_decode_symbols(response.fetch(:data)))
+      when "Error"
+        error_class = safe_image_error_class(response.fetch(:class))
+        if error_class == CommandError
+          raise CommandError.new(
+                  response.fetch(:message).to_s,
+                  command: response[:command] || [],
+                  status: response[:status],
+                  stdout: response[:stdout].to_s,
+                  stderr: response[:stderr].to_s
+                )
+        end
+        raise error_class, response.fetch(:message).to_s
       else
-        response[:data]
+        deep_decode_symbols(response[:data])
       end
+    end
+
+    def safe_image_error_class(class_name)
+      klass = class_name.to_s.split("::").reduce(Object) { |namespace, name| namespace.const_get(name, false) }
+      return klass if klass <= SafeImage::Error
+
+      SafeImage::Error
+    rescue NameError
+      SafeImage::Error
     end
 
     # JSON cannot represent symbols, so wrap symbol values as {"__sym__" => name}
@@ -389,6 +434,19 @@ module SafeImage
         value.transform_values { |v| deep_encode_symbols(v) }
       when Array
         value.map { |v| deep_encode_symbols(v) }
+      else
+        value
+      end
+    end
+
+    def deep_decode_symbols(value)
+      case value
+      when Hash
+        return value[:__sym__].to_sym if value.size == 1 && value[:__sym__].is_a?(String)
+
+        value.transform_values { |v| deep_decode_symbols(v) }
+      when Array
+        value.map { |v| deep_decode_symbols(v) }
       else
         value
       end
@@ -418,6 +476,20 @@ module SafeImage
         end
       end
 
+      # Positional Discourse-compatible APIs use the first argument as input and
+      # the second as output. Grant write access to the output and its parent
+      # even when a stale output file already exists; the generic inference above
+      # intentionally treats existing paths as read-only unless an operation tells
+      # us otherwise.
+      if positional_output_path_operation?(operation)
+        output = Array(request[:args])[1]
+        if output.is_a?(String) && !output.empty? && !output.include?("\0")
+          expanded = File.expand_path(output)
+          write << expanded if File.exist?(expanded)
+          write << File.dirname(expanded)
+        end
+      end
+
       # Common keyword names for generated outputs. Include the containing dir
       # even when a stale file already exists, because operations may replace it.
       kwargs = request[:kwargs] || {}
@@ -437,6 +509,10 @@ module SafeImage
       end
 
       { read: read.uniq, write: write.uniq }
+    end
+
+    def positional_output_path_operation?(operation)
+      %w[resize crop downsize convert convert_to_jpeg convert_favicon_to_png fix_orientation].include?(operation.to_s)
     end
 
     def looks_like_path?(value)
