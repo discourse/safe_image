@@ -6,7 +6,7 @@ module SafeImage
 
     DIMENSIONS_RE = /\A(?:(?<percent>\d+(?:\.\d+)?)%|(?<w>\d*)x(?<h>\d*)(?<only_down>>)?|(?<pixels>\d+)@)\z/
 
-    def crop_north(input:, output:, width:, height:, format:, quality: 85, max_pixels: nil)
+    def crop_north(input:, output:, width:, height:, format:, quality: QualityDefaults::JPEG, max_pixels: nil)
       Native.crop_north(
         input.to_s,
         output.to_s,
@@ -18,7 +18,7 @@ module SafeImage
       )
     end
 
-    def downsize(input:, output:, dimensions:, format:, quality: 85, max_pixels: nil)
+    def downsize(input:, output:, dimensions:, format:, quality: QualityDefaults::JPEG, max_pixels: nil)
       probe = SafeImage.probe(input, max_pixels: max_pixels)
       scale = scale_for(probe.width, probe.height, dimensions)
       # Never upscale, but always re-encode through the native saver — even on a

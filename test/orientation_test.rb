@@ -32,6 +32,7 @@ module SafeImage
       result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
       assert_equal "jpegtran", result.backend
+      assert_equal :jpegtran_lossless, result.tier
       assert_result result, width: 128, height: 192, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("fixed.jpg"))
     end
@@ -42,6 +43,7 @@ module SafeImage
       result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
       assert_equal "libvips-direct", result.backend
+      assert_includes %i[jpegtran_fallback_reencode native_reencode], result.tier
       assert_result result, width: 131, height: 201, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("fixed.jpg"))
     end

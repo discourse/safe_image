@@ -293,22 +293,9 @@ module SafeImage
       end
 
       def normalized_format(ext)
-        case ext.to_s.downcase
-        when "jpg", "jpeg"
-          "jpg"
-        when "png"
-          "png"
-        when "webp"
-          "webp"
-        when "gif"
-          "gif"
-        when "heic", "heif"
-          "heic"
-        when "avif"
-          "avif"
-        when "jxl"
-          "jxl"
-        end
+        canonical = Formats.native_canonical(ext)
+        allowed = Formats::NATIVE_INPUTS.include?(Formats.normalize(ext)) || Formats::NATIVE_OUTPUTS.include?(canonical)
+        allowed ? canonical : nil
       end
 
       def output_format!(format)

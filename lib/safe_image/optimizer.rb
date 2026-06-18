@@ -6,6 +6,9 @@ module SafeImage
   module Optimizer
     module_function
 
+    # pngquant's lossy trial is worthwhile only for small generated PNGs; above
+    # this size the extra decode/quantize pass is comparatively expensive and
+    # oxipng still handles the lossless cleanup.
     MAX_PNGQUANT_SIZE = 500_000
 
     # EXIF orientation values mapped onto jpegtran's lossless transforms.
@@ -18,6 +21,11 @@ module SafeImage
       7 => ["-transverse"],
       8 => %w[-rotate 270]
     }.freeze
+
+    def jpegtran_perfect_reject?(error)
+      error.is_a?(CommandError) && error.category == :exit_status && error.status.to_i == 1 &&
+        Array(error.command).include?("-perfect")
+    end
 
     # assume_upright: skips the JPEG orientation check; only for callers
     # optimising output this gem just encoded (which is always upright).
@@ -222,7 +230,9 @@ module SafeImage
             ["jpegtran", "-copy", "none", "-perfect", *transform, "-outfile", tmp_path.to_s, path.to_s],
             timeout: timeout
           )
-        rescue CommandError
+        rescue CommandError => e
+          raise unless jpegtran_perfect_reject?(e)
+
           Runner.run!(
             ["jpegtran", "-copy", "none", "-trim", *transform, "-outfile", tmp_path.to_s, path.to_s],
             timeout: timeout

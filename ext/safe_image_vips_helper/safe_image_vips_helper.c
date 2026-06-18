@@ -12,6 +12,8 @@
 #include <vips/vips.h>
 
 #define DEFAULT_MAX_PIXELS (128LL * 1024LL * 1024LL)
+#define DEFAULT_JPEG_QUALITY 85
+#define DEFAULT_NATIVE_CONVERT_JPEG_QUALITY 92
 
 typedef struct {
   const char *key;
@@ -460,7 +462,7 @@ static int cmd_thumbnail(options_t *opts, double started) {
   const char *output = opt_required(opts, "output");
   int width = opt_int(opts, "width", 0);
   int height = opt_int(opts, "height", 0);
-  int quality = opt_int(opts, "quality", 85);
+  int quality = opt_int(opts, "quality", DEFAULT_JPEG_QUALITY);
   const char *out_format = normalized_format(opt_required(opts, "format"));
   const char *in_format = normalized_format(extname(input));
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
@@ -541,7 +543,7 @@ static int cmd_resize(options_t *opts, double started) {
   const char *input = opt_required(opts, "input");
   const char *output = opt_required(opts, "output");
   double scale = opt_double(opts, "scale", 0.0);
-  int quality = opt_int(opts, "quality", 85);
+  int quality = opt_int(opts, "quality", DEFAULT_JPEG_QUALITY);
   const char *out_format = normalized_format(opt_required(opts, "format"));
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
   if (scale <= 0.0 || scale > 100.0 || quality < 1 || quality > 100 || !out_format ||
@@ -582,7 +584,7 @@ static int cmd_crop_north(options_t *opts, double started) {
   const char *input = opt_required(opts, "input");
   const char *output = opt_required(opts, "output");
   int width = opt_int(opts, "width", 0), height = opt_int(opts, "height", 0),
-      quality = opt_int(opts, "quality", 85);
+      quality = opt_int(opts, "quality", DEFAULT_JPEG_QUALITY);
   const char *out_format = normalized_format(opt_required(opts, "format"));
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
   if (width <= 0 || height <= 0 || quality < 1 || quality > 100 || !out_format ||
@@ -643,7 +645,7 @@ static int cmd_convert(options_t *opts, double started) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
   const char *output = opt_required(opts, "output");
-  int quality = opt_int(opts, "quality", 92);
+  int quality = opt_int(opts, "quality", DEFAULT_NATIVE_CONVERT_JPEG_QUALITY);
   const char *out_format = normalized_format(opt_required(opts, "format"));
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
   if (quality < 1 || quality > 100 || !out_format || strcmp(out_format, "heic") == 0) {

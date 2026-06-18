@@ -106,6 +106,7 @@ module SafeImage
 
           harden!
           resolve_gtypes!
+          validate_runtime!
           @initialized = true
         end
       end
@@ -297,6 +298,33 @@ module SafeImage
           gtype = c(:g_type_from_name, name)
           raise Error, "GType #{name} is not registered" if gtype.zero?
           @gtype[key] = gtype
+        end
+      end
+
+      def validate_runtime!
+        if c(:vips_type_find, "VipsOperation", "copy").zero?
+          raise Error, "libvips ABI validation failed: copy operation missing"
+        end
+
+        unless c(:g_type_fundamental, @gtype.fetch(:int)) == @gtype.fetch(:int)
+          raise Error, "libvips ABI validation failed: gint fundamental type mismatch"
+        end
+
+        op = c(:vips_operation_new, "black")
+        raise Error, "libvips ABI validation failed: black operation missing" if op.null?
+
+        begin
+          klass = op[0, Fiddle::SIZEOF_VOIDP].unpack1("J")
+          pspec = c(:g_object_class_find_property, klass, "width")
+          raise Error, "libvips ABI validation failed: black.width property missing" if pspec.null?
+
+          value_type = pspec[PSPEC_VALUE_TYPE_OFFSET, Fiddle::SIZEOF_VOIDP].unpack1("J")
+          unless c(:g_type_fundamental, value_type) == @gtype.fetch(:int)
+            raise Error,
+                  "libvips ABI validation failed: GParamSpec value_type offset #{PSPEC_VALUE_TYPE_OFFSET} is not gint"
+          end
+        ensure
+          c(:g_object_unref, op)
         end
       end
 

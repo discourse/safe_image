@@ -4,6 +4,13 @@ require_relative "safe_image/version"
 
 module SafeImage
   class Error < StandardError
+    attr_reader :original_error_class, :stderr_tail
+
+    def initialize(message = nil, original_error_class: nil, stderr_tail: nil)
+      super(message)
+      @original_error_class = original_error_class
+      @stderr_tail = stderr_tail
+    end
   end
 
   # Raised when any operation is attempted before SafeImage.configure!.
@@ -42,14 +49,17 @@ module SafeImage
 end
 
 require_relative "safe_image/native"
-require_relative "safe_image/native_helper"
 require_relative "safe_image/result"
+require_relative "safe_image/quality_defaults"
 require_relative "safe_image/runner"
 require_relative "safe_image/path_safety"
 require_relative "safe_image/formats"
 require_relative "safe_image/backend_label"
+require_relative "safe_image/operation_registry"
+require_relative "safe_image/sandbox_protocol"
 require_relative "safe_image/atomic_output"
 require_relative "safe_image/sandbox"
+require_relative "safe_image/native_helper"
 require_relative "safe_image/optimizer"
 require_relative "safe_image/svg_metadata"
 require_relative "safe_image/remote"
@@ -58,6 +68,7 @@ require_relative "safe_image/image_magick_backend"
 require_relative "safe_image/jpegli_backend"
 require_relative "safe_image/vips_backend"
 require_relative "safe_image/processor"
+require_relative "safe_image/operation_backends"
 require_relative "safe_image/operations"
 require_relative "safe_image/api/metadata"
 require_relative "safe_image/api/transform"
@@ -128,15 +139,15 @@ module SafeImage
   end
 
   # Internal: per-call max_pixels overrides the configured default.
-  def resolved_max_pixels(max_pixels)
+  def resolved_max_pixels(max_pixels, config: self.config)
     max_pixels.nil? ? config.max_pixels : max_pixels
   end
 
-  def maybe_sandbox(operation, args: [], kwargs: {})
-    config
+  def maybe_sandbox(operation, args: [], kwargs: {}, config: nil)
+    config ||= self.config
     return yield unless sandbox?
 
-    Sandbox.public_call!(operation, args: args, kwargs: kwargs)
+    Sandbox.public_call!(operation, args: args, kwargs: kwargs, config: config)
   end
 
   extend API::Metadata

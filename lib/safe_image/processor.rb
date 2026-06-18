@@ -8,8 +8,9 @@ module SafeImage
     # skip the optimize pass instead of erroring.
     OPTIMIZABLE_OUTPUTS = Formats::OPTIMIZABLE_OUTPUTS
 
-    def initialize(max_pixels: nil, chroma_subsampling: :auto)
-      @max_pixels = max_pixels || SafeImage.config.max_pixels
+    def initialize(max_pixels: nil, chroma_subsampling: :auto, config: SafeImage.config)
+      @config = config
+      @max_pixels = max_pixels || config.max_pixels
       @chroma_subsampling = chroma_subsampling
     end
 
@@ -17,21 +18,31 @@ module SafeImage
       input = safe_existing_file!(path)
       info = Native.probe(input.to_s)
       validate_pixels!(info.fetch(:width), info.fetch(:height))
-      Result.new(
-        input: input.to_s,
+      Result.build(
+        input: input,
         output: nil,
         input_format: info.fetch(:format),
         output_format: nil,
         width: info.fetch(:width),
         height: info.fetch(:height),
         filesize: File.size(input),
-        backend: BackendLabel.build(:vips),
+        backend: :vips,
         duration_ms: info.fetch(:duration_ms),
-        optimizer: nil
+        optimizer: nil,
+        tier: :metadata
       )
     end
 
-    def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, optimize: false, optimize_mode: :lossless)
+    def thumbnail(
+      input:,
+      output:,
+      width:,
+      height:,
+      format: nil,
+      quality: QualityDefaults::JPEG,
+      optimize: false,
+      optimize_mode: :lossless
+    )
       input, output = PathSafety.ensure_distinct_file_paths!(input, output)
       safe_existing_file!(input)
       width = Integer(width)
@@ -46,7 +57,7 @@ module SafeImage
       end
 
       output.dirname.mkpath
-      backend = SafeImage.config.backend
+      backend = @config.backend
       info =
         if out_format == "jpg" && use_jpegli_for_generated_jpeg?(backend)
           jpegli_thumbnail(
@@ -87,17 +98,18 @@ module SafeImage
           )
       end
 
-      Result.new(
-        input: input.to_s,
-        output: output.to_s,
+      Result.build(
+        input: input,
+        output: output,
         input_format: info.fetch(:input_format),
         output_format: info.fetch(:output_format),
         width: info.fetch(:width),
         height: info.fetch(:height),
-        filesize: File.size(output),
-        backend: result_backend(info, backend),
+        backend: backend,
+        encoder: info[:encoder],
         duration_ms: info.fetch(:duration_ms),
-        optimizer: opt_info&.fetch(:tools, nil)
+        optimizer: opt_info&.fetch(:tools, nil),
+        tier: info[:encoder] == "cjpegli" ? :cjpegli : :thumbnail
       )
     end
 
@@ -117,28 +129,16 @@ module SafeImage
     end
 
     def jpegli_thumbnail(input:, output:, width:, height:, quality:, source_format:)
-      AtomicOutput.with_temp_path_near(output, suffix: ".safe-image.png") do |tmp_path|
-        Native.thumbnail(input.to_s, tmp_path.to_s, width, height, "png", 100, @max_pixels)
-        JpegliBackend.encode(
-          input: tmp_path,
-          output: output,
-          quality: quality,
-          chroma_subsampling:
-            JpegliBackend.validate_chroma_subsampling!(
-              @chroma_subsampling,
-              input_format: normalized_source_format(source_format)
-            ),
-          input_format: normalized_source_format(source_format)
-        )
-      end
+      JpegliBackend.encode_generated_jpeg(
+        output: output,
+        quality: quality,
+        chroma_subsampling: @chroma_subsampling,
+        input_format: normalized_source_format(source_format)
+      ) { |tmp_path| Native.thumbnail(input.to_s, tmp_path.to_s, width, height, "png", 100, @max_pixels) }
     end
 
     def normalized_source_format(format)
       Formats.normalize(format)
-    end
-
-    def result_backend(info, backend)
-      BackendLabel.build(backend, encoder: info[:encoder])
     end
 
     def safe_existing_file!(path)

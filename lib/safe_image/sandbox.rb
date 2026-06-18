@@ -16,106 +16,7 @@ module SafeImage
       open_files: 256
     }.freeze
 
-    OPERATIONS = %w[
-      probe
-      thumbnail
-      type
-      size
-      dimensions
-      info
-      orientation
-      dominant_color
-      optimize
-      resize
-      crop
-      downsize
-      convert
-      fix_orientation
-      convert_favicon_to_png
-      frame_count
-      animated?
-      letter_avatar
-    ].freeze
-
-    METADATA_INPUT = ->(request) { [Array(request[:args]).first] }
-    KEYWORD_INPUT = ->(request) { [request.dig(:kwargs, :input)] }
-    KEYWORD_OUTPUT = ->(request) { [request.dig(:kwargs, :output)] }
-    NO_PATHS = ->(_request) { [] }
-
-    OPERATION_PATHS = {
-      "probe" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "type" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "size" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "dimensions" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "info" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "orientation" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "dominant_color" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "frame_count" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "animated?" => {
-        read: METADATA_INPUT,
-        write: NO_PATHS
-      },
-      "thumbnail" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "optimize" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "resize" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "crop" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "downsize" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "convert" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "fix_orientation" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "convert_favicon_to_png" => {
-        read: KEYWORD_INPUT,
-        write: KEYWORD_OUTPUT
-      },
-      "letter_avatar" => {
-        read: NO_PATHS,
-        write: KEYWORD_OUTPUT
-      }
-    }.freeze
+    OPERATIONS = OperationRegistry.names
 
     def available?
       require "landlock"
@@ -204,51 +105,34 @@ module SafeImage
             )
     end
 
-    def public_call!(operation, args:, kwargs:)
+    def public_call!(operation, args:, kwargs:, config: SafeImage.config)
       operation = operation.to_s
-      if OPERATIONS.none? { |candidate| candidate == operation }
-        raise ArgumentError, "unsupported sandbox operation: #{operation}"
-      end
+      raise ArgumentError, "unsupported sandbox operation: #{operation}" if OperationRegistry.exclude?(operation)
+
       request = { args: args, kwargs: kwargs }
-      if SafeImage.config.backend == :vips && native_helper_operation?(operation, request)
-        result = native_helper_public_call!(operation, request)
+      if config.backend == :vips && native_helper_operation?(operation, request)
+        result = native_helper_public_call!(operation, request, config: config)
       else
-        result = run_worker!(operation, request)
+        result = run_worker!(operation, request, config: config)
       end
       operation == "type" && result ? result.to_sym : result
     end
 
     def native_helper_operation?(operation, request)
+      return false unless OperationRegistry.native_eligible?(operation)
       return false if operation == "thumbnail" && request[:kwargs]&.fetch(:optimize, false)
-      if %w[
-           probe
-           type
-           size
-           dimensions
-           info
-           orientation
-           dominant_color
-           frame_count
-           animated?
-           thumbnail
-         ].none? { |candidate| candidate == operation }
-        return false
-      end
 
       path = request[:kwargs]&.fetch(:input, nil) || Array(request[:args]).first
       return true if operation == "thumbnail"
       return false unless path.is_a?(String)
 
-      ext = Formats.extension(path)
-      Formats.native_input?(ext)
-    rescue Error, ArgumentError
-      false
+      Formats.native_input?(Formats.extension(path))
     end
 
-    def native_helper_public_call!(operation, request)
+    def native_helper_public_call!(operation, request, config: SafeImage.config)
       kwargs = request[:kwargs] || {}
       args = request[:args] || []
-      max_pixels = SafeImage.resolved_max_pixels(kwargs[:max_pixels])
+      max_pixels = SafeImage.resolved_max_pixels(kwargs[:max_pixels], config: config)
 
       case operation
       when "probe"
@@ -287,7 +171,7 @@ module SafeImage
     def result_from_helper_probe(path, max_pixels)
       input = PathSafety.ensure_regular_file!(path).to_s
       info = NativeHelper.probe(input, max_pixels)
-      Result.new(
+      Result.build(
         input: input,
         output: nil,
         input_format: info.fetch(:input_format),
@@ -295,9 +179,10 @@ module SafeImage
         width: info.fetch(:width),
         height: info.fetch(:height),
         filesize: File.size(input),
-        backend: "libvips-helper",
+        backend: :vips_helper,
         duration_ms: info.fetch(:duration_ms),
-        optimizer: nil
+        optimizer: nil,
+        tier: :native_helper
       )
     end
 
@@ -307,7 +192,7 @@ module SafeImage
       output = output.to_s
       width = Integer(kwargs.fetch(:width))
       height = Integer(kwargs.fetch(:height))
-      quality = Integer(kwargs.fetch(:quality, 85))
+      quality = Integer(kwargs.fetch(:quality, QualityDefaults::JPEG))
       format = Formats.normalize(kwargs[:format] || File.extname(output).delete_prefix("."))
       FileUtils.mkdir_p(File.dirname(output))
       info = NativeHelper.thumbnail(input, output, width, height, format, quality, max_pixels)
@@ -322,17 +207,17 @@ module SafeImage
             assume_upright: true
           )
       end
-      Result.new(
+      Result.build(
         input: input,
         output: output,
         input_format: info.fetch(:input_format),
         output_format: info.fetch(:output_format),
         width: info.fetch(:width),
         height: info.fetch(:height),
-        filesize: File.size(output),
-        backend: "libvips-helper",
+        backend: :vips_helper,
         duration_ms: info.fetch(:duration_ms),
-        optimizer: opt_info&.fetch(:tools, nil)
+        optimizer: opt_info&.fetch(:tools, nil),
+        tier: :native_helper
       )
     end
 
@@ -342,21 +227,18 @@ module SafeImage
       end
     end
 
-    def run_worker!(operation, request)
+    def run_worker!(operation, request, config: SafeImage.config)
       operation = operation.to_s
-      if OPERATIONS.none? { |candidate| candidate == operation }
-        raise ArgumentError, "unsupported sandbox operation: #{operation}"
-      end
+      raise ArgumentError, "unsupported sandbox operation: #{operation}" if OperationRegistry.exclude?(operation)
 
       require "landlock"
-      config = SafeImage.config
       payload =
         JSON.dump(
           {
             operation: operation,
             # JSON has no symbol type; wrap symbol values so the worker can restore
             # them for keyword values that public APIs accept as symbols.
-            request: deep_encode_symbols(request),
+            request: SandboxProtocol.deep_encode_symbols(request),
             # The worker is a fresh process and must be configured like the
             # parent — minus landlock, since it already runs inside the sandbox.
             config: {
@@ -365,80 +247,9 @@ module SafeImage
             }
           }
         )
-      code = <<~'RUBY'
-        require "json"
-        require "safe_image"
-
-        def deep_symbolize(value)
-          case value
-          when Hash
-            # {"__sym__" => "x"} is a symbol value the parent wrapped for transport.
-            return value[:__sym__].to_sym if value.size == 1 && value[:__sym__].is_a?(String)
-            value.each_with_object({}) { |(k, v), h| h[k.to_sym] = deep_symbolize(v) }
-          when Array
-            value.map { |v| deep_symbolize(v) }
-          else
-            value
-          end
-        end
-
-        def deep_encode_symbols(value)
-          case value
-          when Symbol
-            { __sym__: value.to_s }
-          when Hash
-            value.transform_values { |v| deep_encode_symbols(v) }
-          when Array
-            value.map { |v| deep_encode_symbols(v) }
-          else
-            value
-          end
-        end
-
-        payload = JSON.parse(ARGV.fetch(0), symbolize_names: true)
-        operation = payload.fetch(:operation).to_s
-        allowed_operations = %w[
-          probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert fix_orientation
-          convert_favicon_to_png frame_count animated? letter_avatar
-        ]
-        raise ArgumentError, "unsupported sandbox operation: #{operation}" unless allowed_operations.include?(operation)
-
-        request = deep_symbolize(payload.fetch(:request))
-        args = request[:args] || []
-        kwargs = request[:kwargs] || {}
-
-        config = payload.fetch(:config)
-        SafeImage.configure!(
-          backend: config.fetch(:backend).to_sym,
-          landlock: false,
-          max_pixels: config.fetch(:max_pixels)
-        )
-
-        begin
-          result = SafeImage.__send__(operation, *args, **kwargs)
-
-          if defined?(SafeImage::Result) && result.is_a?(SafeImage::Result)
-            puts JSON.dump({ __type: "Result", data: deep_encode_symbols(result.to_h) })
-          elsif defined?(SafeImage::Info) && result.is_a?(SafeImage::Info)
-            puts JSON.dump({ __type: "Info", data: deep_encode_symbols(result.to_h) })
-          else
-            puts JSON.dump({ __type: "Value", data: deep_encode_symbols(result) })
-          end
-        rescue SafeImage::Error => e
-          error = { __type: "Error", class: e.class.name, message: e.message }
-          if defined?(SafeImage::CommandError) && e.is_a?(SafeImage::CommandError)
-            error[:command] = e.command
-            error[:status] = e.status
-            error[:stdout] = e.stdout
-            error[:stderr] = e.stderr
-            error[:category] = e.category
-            error[:operation] = e.operation
-          end
-          puts JSON.dump(error)
-        end
-      RUBY
 
       paths = sandbox_paths(request, operation)
+      worker = File.expand_path("sandbox_worker.rb", __dir__)
       Dir.mktmpdir("safe-image-worker-") do |tmpdir|
         worker_env =
           Runner.command_env(tmpdir).merge(
@@ -448,10 +259,10 @@ module SafeImage
             "RUBYLIB" => $LOAD_PATH.select { |p| p && File.directory?(p) }.join(File::PATH_SEPARATOR)
           )
 
-        stdout, =
+        stdout, stderr =
           landlock_capture!(
-            [RbConfig.ruby, "-I#{File.expand_path("../../", __dir__)}", "-rjson", "-e", code, payload],
-            read: existing_paths([*default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir]),
+            [RbConfig.ruby, "-I#{File.expand_path("../../", __dir__)}", worker, payload],
+            read: existing_paths([*default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir, worker]),
             write: existing_paths([*paths.fetch(:write), tmpdir]),
             execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
             env: worker_env,
@@ -462,91 +273,43 @@ module SafeImage
             max_output_bytes: 512 * 1024,
             truncate_output: false
           )
-        decode_payload(JSON.parse(stdout, symbolize_names: true))
+        decode_worker_stdout(stdout, stderr: stderr)
       end
     rescue LoadError
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     rescue landlock_command_error => e
       raise CommandError.new(
               "sandboxed worker failed: #{failure_detail(e)}",
-              command: [RbConfig.ruby, "-e", "..."],
+              command: [RbConfig.ruby, File.expand_path("sandbox_worker.rb", __dir__), operation],
               status: e.status&.exitstatus,
               stdout: e.stdout,
               stderr: e.stderr,
               category: :sandbox_worker,
-              operation: operation
+              operation: operation,
+              stderr_tail: SandboxProtocol.tail(e.stderr)
             )
     end
 
-    # Rebuilds a worker's {__type:, data:} JSON reply into the value the
-    # caller would have received inline.
-    def decode_payload(response)
-      case response[:__type]
-      when "Result"
-        Result.new(**deep_decode_symbols(response.fetch(:data)))
-      when "Info"
-        Info.new(**deep_decode_symbols(response.fetch(:data)))
-      when "Error"
-        error_class = safe_image_error_class(response.fetch(:class))
-        if error_class == CommandError
-          raise CommandError.new(
-                  response.fetch(:message).to_s,
-                  command: response[:command] || [],
-                  status: response[:status],
-                  stdout: response[:stdout].to_s,
-                  stderr: response[:stderr].to_s,
-                  category: response[:category],
-                  operation: response[:operation]
-                )
-        end
-        raise error_class, response.fetch(:message).to_s
-      else
-        deep_decode_symbols(response[:data])
-      end
-    end
-
-    def safe_image_error_class(class_name)
-      klass = class_name.to_s.split("::").reduce(Object) { |namespace, name| namespace.const_get(name, false) }
-      return klass if klass <= SafeImage::Error
-
-      SafeImage::Error
-    rescue NameError
-      SafeImage::Error
-    end
-
-    # JSON cannot represent symbols, so wrap symbol values as {"__sym__" => name}
-    # for the worker's deep_symbolize to restore. Mirrors that decoder.
-    def deep_encode_symbols(value)
-      case value
-      when Symbol
-        { "__sym__" => value.to_s }
-      when Hash
-        value.transform_values { |v| deep_encode_symbols(v) }
-      when Array
-        value.map { |v| deep_encode_symbols(v) }
-      else
-        value
-      end
-    end
-
-    def deep_decode_symbols(value)
-      case value
-      when Hash
-        return value[:__sym__].to_sym if value.size == 1 && value[:__sym__].is_a?(String)
-
-        value.transform_values { |v| deep_decode_symbols(v) }
-      when Array
-        value.map { |v| deep_decode_symbols(v) }
-      else
-        value
-      end
+    # Rebuilds a worker's {__type:, data:} JSON reply into the value the caller
+    # would have received inline. Invalid JSON is reported as a structured
+    # boundary error with the worker's stderr tail instead of surfacing as an
+    # opaque JSON::ParserError.
+    def decode_worker_stdout(stdout, stderr: nil)
+      SandboxProtocol.decode_payload(JSON.parse(stdout, symbolize_names: true), stderr: stderr)
+    rescue JSON::ParserError => e
+      raise CommandError.new(
+              "sandboxed worker wrote invalid JSON: #{e.message}",
+              command: [RbConfig.ruby, File.expand_path("sandbox_worker.rb", __dir__)],
+              stdout: stdout.to_s,
+              stderr: stderr.to_s,
+              category: :sandbox_worker,
+              stderr_tail: SandboxProtocol.tail(stderr)
+            )
     end
 
     def sandbox_paths(request, operation)
-      rules =
-        OPERATION_PATHS.fetch(operation.to_s) { raise ArgumentError, "unsupported sandbox operation: #{operation}" }
-      read = expand_read_paths(rules.fetch(:read).call(request))
-      write = expand_write_paths(rules.fetch(:write).call(request))
+      read = expand_read_paths(OperationRegistry.read_paths(operation, request))
+      write = expand_write_paths(OperationRegistry.write_paths(operation, request))
       { read: read.uniq, write: write.uniq }
     end
 

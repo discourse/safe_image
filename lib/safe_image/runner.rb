@@ -8,8 +8,18 @@ module SafeImage
   class CommandError < Error
     attr_reader :command, :status, :stdout, :stderr, :category, :operation
 
-    def initialize(message, command:, status: nil, stdout: "", stderr: "", category: :command, operation: nil)
-      super(message)
+    def initialize(
+      message,
+      command:,
+      status: nil,
+      stdout: "",
+      stderr: "",
+      category: :command,
+      operation: nil,
+      original_error_class: nil,
+      stderr_tail: nil
+    )
+      super(message, original_error_class: original_error_class, stderr_tail: stderr_tail)
       @command = command
       @status = status
       @stdout = stdout
@@ -24,6 +34,9 @@ module SafeImage
 
     DEFAULT_TIMEOUT = 20
     MAX_OUTPUT_BYTES = 512 * 1024
+    # Give well-behaved tools a short flush window after TERM before KILL keeps
+    # the timeout hard without leaking process groups.
+    TERMINATE_GRACE_SECONDS = 0.2
     TRUSTED_PATH = "/usr/bin:/bin:/usr/local/bin".freeze
     ALLOWED_ENV_KEYS = %w[LANG LC_ALL LC_CTYPE TZ].freeze
     IMAGEMAGICK_POLICY_PATH = File.expand_path("imagemagick_policy", __dir__)
@@ -151,7 +164,7 @@ module SafeImage
     rescue Errno::ESRCH, Errno::EPERM
     ensure
       begin
-        sleep 0.2
+        sleep TERMINATE_GRACE_SECONDS
         Process.kill("KILL", -pid)
       rescue Errno::ESRCH, Errno::EPERM
       end

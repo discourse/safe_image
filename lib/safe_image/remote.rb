@@ -77,11 +77,13 @@ module SafeImage
       ".jxl" => [[[0, "\xFF\x0A".b]], [[0, "\x00\x00\x00\x0CJXL \r\n\x87\n".b]]]
     }.freeze
 
+    # 12 bytes covers the longest fixed magic this gate uses today (container JXL)
+    # while still rejecting mismatches before meaningful body download.
     SIGNATURE_HEAD_BYTES = 12
 
-    # The metadata helpers probe the partially-downloaded file at these
-    # growing byte thresholds and abort the transfer once the answer is
-    # stable, instead of always downloading up to max_bytes.
+    # The metadata helpers probe the partially-downloaded file at these growing
+    # byte thresholds: 64KiB catches normal headers, x4 reaches pathological but
+    # valid marker chains without too many decoder attempts.
     PREFIX_PROBE_INITIAL_BYTES = 64 * 1024
     PREFIX_PROBE_GROWTH_FACTOR = 4
 

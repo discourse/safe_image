@@ -41,6 +41,14 @@ module SafeImage
       format == "jpeg" ? "jpg" : format
     end
 
+    # Canonical names used by libvips' explicit loaders/savers. HEIF-family
+    # inputs share the HEIC loader; AVIF remains distinct because saves need the
+    # AV1 compression option.
+    def native_canonical(format)
+      normalized = normalize(format)
+      normalized == "heif" ? "heic" : normalized
+    end
+
     def extension(path)
       normalize(File.extname(PathSafety.local_path(path)).delete_prefix("."))
     end

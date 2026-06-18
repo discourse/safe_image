@@ -35,14 +35,14 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev imagemagick jpegoptim pngquant
+          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant
           # cjpegli is optional; its tests skip when it is missing.
           sudo apt-get install -y libjxl-tools || true
           if [ ! -f "$HOME/.cargo/bin/oxipng" ]; then
             cargo install oxipng --locked
           fi
           sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
-          command -v convert identify jpegoptim oxipng pngquant
+          command -v convert identify jpegoptim jpegtran oxipng pngquant
 
       - name: Lint
         run: bundle exec rubocop
@@ -71,14 +71,14 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev imagemagick jpegoptim pngquant
+          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant
           # cjpegli is optional; its tests skip when it is missing.
           sudo apt-get install -y libjxl-tools || true
           if [ ! -f "$HOME/.cargo/bin/oxipng" ]; then
             cargo install oxipng --locked
           fi
           sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
-          command -v convert identify jpegoptim oxipng pngquant
+          command -v convert identify jpegoptim jpegtran oxipng pngquant
 
       - name: Tests
         run: bundle exec rake test

@@ -185,8 +185,17 @@ module SafeImage
         )
       value = stdout.to_s.strip
       value.empty? ? 1 : value.to_i
-    rescue CommandError
+    rescue CommandError => e
+      raise unless missing_orientation_property?(e)
+
       1
+    end
+
+    def missing_orientation_property?(error)
+      return false unless error.category == :exit_status
+
+      detail = [error.stderr, error.stdout, error.message].join("\n")
+      detail.match?(/EXIF:Orientation|unknown image property|no such (?:property|attribute)|undefined/i)
     end
 
     # Averages the whole image down to one pixel and reports it as an RRGGBB

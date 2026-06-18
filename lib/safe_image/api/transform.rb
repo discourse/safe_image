@@ -11,7 +11,7 @@ module SafeImage
         width:,
         height:,
         format: nil,
-        quality: 85,
+        quality: QualityDefaults::JPEG,
         max_pixels: nil,
         optimize: false,
         optimize_mode: :lossless,
@@ -146,7 +146,7 @@ module SafeImage
         dimensions:,
         optimize: true,
         max_pixels: nil,
-        quality: 85,
+        quality: QualityDefaults::JPEG,
         chroma_subsampling: :auto
       )
         maybe_sandbox(

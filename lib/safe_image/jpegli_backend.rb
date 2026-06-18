@@ -6,7 +6,7 @@ module SafeImage
 
     DIRECT_INPUTS = Formats::CJPEGLI_DIRECT_INPUTS
     CHROMA_SUBSAMPLING = %w[420 422 444].freeze
-    DEFAULT_QUALITY = 85
+    DEFAULT_QUALITY = QualityDefaults::JPEG
 
     def available?
       Runner.available?("cjpegli")
@@ -38,6 +38,20 @@ module SafeImage
         timeout: timeout,
         input_format: input_format
       )
+    end
+
+    def encode_generated_jpeg(output:, quality: DEFAULT_QUALITY, chroma_subsampling: :auto, input_format: nil)
+      AtomicOutput.with_temp_path_near(output, suffix: ".safe-image.png") do |tmp_path|
+        decoded = yield tmp_path
+        source_format = input_format || decoded.fetch(:input_format)
+        encode(
+          input: tmp_path,
+          output: output,
+          quality: quality,
+          chroma_subsampling: validate_chroma_subsampling!(chroma_subsampling, input_format: source_format),
+          input_format: source_format
+        )
+      end
     end
 
     def encode(

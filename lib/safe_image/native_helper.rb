@@ -91,21 +91,39 @@ module SafeImage
           argv << "--#{key.to_s.tr("_", "-")}" << value.to_s
         end
 
-        status =
-          Sandbox.landlock_exec(
-            argv,
-            read:
-              Sandbox.existing_paths([*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]),
-            write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
-            execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
-            env: Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
-            unsetenv_others: true,
-            bind_tcp: landlock_abi >= 4 ? [1] : [],
-            scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : []
-          )
+        stdout = stderr = nil
+        status = nil
+        begin
+          result =
+            Sandbox.landlock_capture!(
+              argv,
+              read:
+                Sandbox.existing_paths(
+                  [*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]
+                ),
+              write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
+              execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
+              env: Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
+              unsetenv_others: true,
+              bind_tcp: landlock_abi >= 4 ? [1] : [],
+              scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : [],
+              max_output_bytes: Runner::MAX_OUTPUT_BYTES,
+              truncate_output: false
+            )
+          stdout = result.stdout if result.respond_to?(:stdout)
+          stderr = result.stderr if result.respond_to?(:stderr)
+          status = result.status if result.respond_to?(:status)
+        rescue Sandbox.landlock_command_error => e
+          stdout = e.stdout
+          stderr = e.stderr
+          status = e.status
+          payload = read_response(response, stderr: stderr)
+          raise_helper_error(payload, status, command, stderr: stderr, stdout: stdout)
+        end
 
-        payload = read_response(response)
-        raise_helper_error(payload, status) unless status.success? && payload[:ok]
+        payload = read_response(response, stderr: stderr)
+        helper_failed = status.respond_to?(:success?) ? !status.success? : false
+        raise_helper_error(payload, status, command, stderr: stderr, stdout: stdout) if helper_failed || !payload[:ok]
         payload.reject { |key, _| key == :ok }
       end
     rescue LoadError
@@ -116,37 +134,69 @@ module SafeImage
       @landlock_abi ||= Landlock.abi_version
     end
 
-    def read_response(path)
+    def read_response(path, stderr: nil)
       JSON.parse(File.read(path), symbolize_names: true)
     rescue Errno::ENOENT
-      { ok: false, error: "CommandError", message: "native vips helper did not write a response" }
+      {
+        ok: false,
+        error: "CommandError",
+        message: "native vips helper did not write a response",
+        stderr_tail: SandboxProtocol.tail(stderr)
+      }
     rescue JSON::ParserError => e
-      { ok: false, error: "CommandError", message: "native vips helper wrote invalid JSON: #{e.message}" }
+      {
+        ok: false,
+        error: "CommandError",
+        message: "native vips helper wrote invalid JSON: #{e.message}",
+        stderr_tail: SandboxProtocol.tail(stderr)
+      }
     end
 
-    def raise_helper_error(payload, status)
+    def raise_helper_error(payload, status, command, stderr: nil, stdout: nil)
       message =
-        payload[:message].to_s.empty? ? "native vips helper failed with status #{status.exitstatus}" : payload[:message]
-      case payload[:error].to_s
+        (
+          if payload[:message].to_s.empty?
+            "native vips helper failed with status #{exit_status(status).inspect}"
+          else
+            payload[:message]
+          end
+        )
+      original_class = payload[:error].to_s
+      stderr_tail = payload[:stderr_tail] || SandboxProtocol.tail(stderr)
+      case original_class
       when "LimitError"
-        raise LimitError, message
+        raise LimitError.new(message, original_error_class: original_class, stderr_tail: stderr_tail)
       when "UnsupportedFormatError"
-        raise UnsupportedFormatError, message
+        raise UnsupportedFormatError.new(message, original_error_class: original_class, stderr_tail: stderr_tail)
       when "VipsUnavailableError"
-        raise VipsUnavailableError, message
+        raise VipsUnavailableError.new(message, original_error_class: original_class, stderr_tail: stderr_tail)
       when "ArgumentError"
-        raise ArgumentError, message
+        raise ArgumentError, append_helper_detail(message, original_class, stderr_tail)
       when "InvalidImageError", ""
-        raise InvalidImageError, message
+        raise InvalidImageError.new(message, original_error_class: original_class, stderr_tail: stderr_tail)
       else
         raise CommandError.new(
-                message,
-                command: [HELPER],
-                status: status.exitstatus,
+                "native vips helper downgraded unknown error class #{original_class.inspect}: #{message}",
+                command: [HELPER, command],
+                status: exit_status(status),
+                stdout: stdout.to_s,
+                stderr: stderr.to_s,
                 category: :native_helper,
-                operation: command
+                operation: command,
+                original_error_class: original_class,
+                stderr_tail: stderr_tail
               )
       end
+    end
+
+    def exit_status(status)
+      status.respond_to?(:exitstatus) ? status.exitstatus : status
+    end
+
+    def append_helper_detail(message, _original_class, stderr_tail)
+      return message if stderr_tail.nil? || stderr_tail.empty?
+
+      "#{message} (native vips helper stderr tail: #{stderr_tail})"
     end
 
     def read_paths(options)
