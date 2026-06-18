@@ -2,6 +2,7 @@
 
 require "bundler"
 require "rake/testtask"
+require "shellwords"
 
 begin
   Bundler.setup :default, :development
@@ -15,6 +16,25 @@ end
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
   t.test_files = FileList["test/**/*_test.rb"]
+end
+
+formattable_ruby_files = FileList["Gemfile", "Rakefile", "*.gemspec", "{lib,test,bench}/**/*.rb"].to_a.freeze
+formattable_c_files = FileList["ext/**/*.{c,h}"].to_a.freeze
+stree_print_width = 120
+clang_format = ENV.fetch("CLANG_FORMAT", "clang-format")
+
+namespace :format do
+  desc "Check Ruby/C formatting"
+  task :check do
+    sh "bundle exec stree check --print-width=#{stree_print_width} #{formattable_ruby_files.map(&:shellescape).join(" ")}"
+    sh "#{clang_format.shellescape} --dry-run --Werror #{formattable_c_files.map(&:shellescape).join(" ")}"
+  end
+end
+
+desc "Format Ruby/C files"
+task :format do
+  sh "bundle exec stree write --print-width=#{stree_print_width} #{formattable_ruby_files.map(&:shellescape).join(" ")}"
+  sh "#{clang_format.shellescape} -i #{formattable_c_files.map(&:shellescape).join(" ")}"
 end
 
 namespace :fuzz do

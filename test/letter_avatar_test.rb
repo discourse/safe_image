@@ -33,8 +33,10 @@ module SafeImage
       SafeImage.letter_avatar(output: plain, size: 360, background_rgb: BG, letter: " ")
       SafeImage.letter_avatar(output: lettered, size: 360, background_rgb: BG, letter: "M")
 
-      assert_operator SafeImage.dominant_color(lettered).to_i(16), :>, SafeImage.dominant_color(plain).to_i(16),
-        "expected the white glyph blend to lighten the average colour"
+      assert_operator SafeImage.dominant_color(lettered).to_i(16),
+                      :>,
+                      SafeImage.dominant_color(plain).to_i(16),
+                      "expected the white glyph blend to lighten the average colour"
     end
 
     def test_bundled_font_renders_deterministically
@@ -61,7 +63,13 @@ module SafeImage
 
     def test_rejects_unknown_font
       assert_raises(ArgumentError) do
-        SafeImage.letter_avatar(output: tmp_path("a.png"), size: 64, background_rgb: BG, letter: "S", font: "Comic-Sans")
+        SafeImage.letter_avatar(
+          output: tmp_path("a.png"),
+          size: 64,
+          background_rgb: BG,
+          letter: "S",
+          font: "Comic-Sans"
+        )
       end
     end
 

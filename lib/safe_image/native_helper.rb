@@ -25,15 +25,41 @@ module SafeImage
     end
 
     def thumbnail(input, output, width, height, format, quality, max_pixels)
-      call!("thumbnail", input: input, output: output, width: width, height: height, format: format, quality: quality, max_pixels: max_pixels)
+      call!(
+        "thumbnail",
+        input: input,
+        output: output,
+        width: width,
+        height: height,
+        format: format,
+        quality: quality,
+        max_pixels: max_pixels
+      )
     end
 
     def resize(input, output, scale, format, quality, max_pixels)
-      call!("resize", input: input, output: output, scale: scale, format: format, quality: quality, max_pixels: max_pixels)
+      call!(
+        "resize",
+        input: input,
+        output: output,
+        scale: scale,
+        format: format,
+        quality: quality,
+        max_pixels: max_pixels
+      )
     end
 
     def crop_north(input, output, width, height, format, quality, max_pixels)
-      call!("crop-north", input: input, output: output, width: width, height: height, format: format, quality: quality, max_pixels: max_pixels)
+      call!(
+        "crop-north",
+        input: input,
+        output: output,
+        width: width,
+        height: height,
+        format: format,
+        quality: quality,
+        max_pixels: max_pixels
+      )
     end
 
     def convert(input, output, format, quality, max_pixels)
@@ -65,21 +91,21 @@ module SafeImage
           argv << "--#{key.to_s.tr("_", "-")}" << value.to_s
         end
 
-        status = Sandbox.landlock_exec(
-          argv,
-          read: Sandbox.existing_paths([*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]),
-          write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
-          execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
-          env: Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
-          unsetenv_others: true,
-          bind_tcp: landlock_abi >= 4 ? [1] : [],
-          scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : []
-        )
+        status =
+          Sandbox.landlock_exec(
+            argv,
+            read:
+              Sandbox.existing_paths([*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]),
+            write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
+            execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
+            env: Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
+            unsetenv_others: true,
+            bind_tcp: landlock_abi >= 4 ? [1] : [],
+            scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : []
+          )
 
         payload = read_response(response)
-        unless status.success? && payload[:ok]
-          raise_helper_error(payload, status)
-        end
+        raise_helper_error(payload, status) unless status.success? && payload[:ok]
         payload.reject { |key, _| key == :ok }
       end
     rescue LoadError
@@ -99,14 +125,21 @@ module SafeImage
     end
 
     def raise_helper_error(payload, status)
-      message = payload[:message].to_s.empty? ? "native vips helper failed with status #{status.exitstatus}" : payload[:message]
+      message =
+        payload[:message].to_s.empty? ? "native vips helper failed with status #{status.exitstatus}" : payload[:message]
       case payload[:error].to_s
-      when "LimitError" then raise LimitError, message
-      when "UnsupportedFormatError" then raise UnsupportedFormatError, message
-      when "VipsUnavailableError" then raise VipsUnavailableError, message
-      when "ArgumentError" then raise ArgumentError, message
-      when "InvalidImageError", "" then raise InvalidImageError, message
-      else raise CommandError.new(message, command: [HELPER], status: status.exitstatus)
+      when "LimitError"
+        raise LimitError, message
+      when "UnsupportedFormatError"
+        raise UnsupportedFormatError, message
+      when "VipsUnavailableError"
+        raise VipsUnavailableError, message
+      when "ArgumentError"
+        raise ArgumentError, message
+      when "InvalidImageError", ""
+        raise InvalidImageError, message
+      else
+        raise CommandError.new(message, command: [HELPER], status: status.exitstatus)
       end
     end
 

@@ -105,7 +105,9 @@ module SafeImage
       assert_raises(LimitError) { SafeImage.size(bomb) }
       allocated = GC.stat(:total_allocated_objects) - before
 
-      assert_operator allocated, :<, 1_000_000,
+      assert_operator allocated,
+                      :<,
+                      1_000_000,
                       "rejecting the element bomb allocated #{allocated} objects; the scan should abort before building the DOM"
     end
 
@@ -119,8 +121,7 @@ module SafeImage
     # the public entry points does not mask the property under test.
     def test_element_cap_aborts_sax_parse_early
       far_over_cap = SvgMetadata::MAX_SVG_ELEMENTS * 100
-      xml = %(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">) +
-            ("<g/>" * far_over_cap) + "</svg>"
+      xml = %(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">) + ("<g/>" * far_over_cap) + "</svg>"
 
       GC.start
       before = GC.stat(:total_allocated_objects)
@@ -129,7 +130,9 @@ module SafeImage
 
       # A full SAX walk of far_over_cap elements would allocate on the order of
       # the element count; aborting at the 10k cap must stay far below that.
-      assert_operator allocated, :<, far_over_cap,
+      assert_operator allocated,
+                      :<,
+                      far_over_cap,
                       "rejecting a #{far_over_cap}-element bomb allocated #{allocated} objects; the SAX parse did not abort early at the cap"
     end
 
@@ -152,9 +155,7 @@ module SafeImage
         bom = "﻿".encode(encoding)
         path = tmp_path("smuggle-#{encoding.name.downcase}.svg")
         File.binwrite(path, (bom + src.encode(encoding)).b)
-        assert_raises(InvalidImageError, "UTF-16 (#{encoding}) DOCTYPE bypassed the guard") do
-          SafeImage.size(path)
-        end
+        assert_raises(InvalidImageError, "UTF-16 (#{encoding}) DOCTYPE bypassed the guard") { SafeImage.size(path) }
       end
     end
 

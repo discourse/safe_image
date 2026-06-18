@@ -14,10 +14,15 @@ module SafeImage
     end
 
     def test_thumbnail_with_the_vips_backend
-      result = SafeImage.thumbnail(
-        input: JPG, output: tmp_path("thumb.jpg"),
-        width: 600, height: 400, optimize: true, max_pixels: JPG_PIXELS
-      )
+      result =
+        SafeImage.thumbnail(
+          input: JPG,
+          output: tmp_path("thumb.jpg"),
+          width: 600,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result result, width: 600, height: 400, format: "jpg"
     end
 
@@ -39,9 +44,17 @@ module SafeImage
         result
       end
 
-      error = assert_raises(InvalidImageError) do
-        SafeImage.thumbnail(input: source, output: tmp_path("race-thumb.jpg"), width: 5, height: 5, max_pixels: JPG_PIXELS, optimize: false)
-      end
+      error =
+        assert_raises(InvalidImageError) do
+          SafeImage.thumbnail(
+            input: source,
+            output: tmp_path("race-thumb.jpg"),
+            width: 5,
+            height: 5,
+            max_pixels: JPG_PIXELS,
+            optimize: false
+          )
+        end
       assert_match(/jpeg|match/i, error.message)
       assert replaced, "test did not exercise the post-header replacement"
     ensure
@@ -55,36 +68,55 @@ module SafeImage
 
     def test_thumbnail_with_the_imagemagick_backend
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.thumbnail(
-        input: JPG, output: tmp_path("thumb.jpg"),
-        width: 600, height: 400, optimize: true, max_pixels: JPG_PIXELS
-      )
+      result =
+        SafeImage.thumbnail(
+          input: JPG,
+          output: tmp_path("thumb.jpg"),
+          width: 600,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result result, width: 600, height: 400, format: "jpg"
       assert_equal "imagemagick", result.backend
     end
 
     def test_thumbnail_of_animated_webp
-      result = SafeImage.thumbnail(
-        input: WEBP, output: tmp_path("webp.jpg"),
-        width: 120, height: 120, optimize: true, max_pixels: PNG_PIXELS
-      )
+      result =
+        SafeImage.thumbnail(
+          input: WEBP,
+          output: tmp_path("webp.jpg"),
+          width: 120,
+          height: 120,
+          optimize: true,
+          max_pixels: PNG_PIXELS
+        )
       assert_result result, width: 120, height: 120
     end
 
     def test_thumbnail_of_animated_gif_takes_first_frame
-      result = SafeImage.thumbnail(
-        input: GIF, output: tmp_path("gif.jpg"),
-        width: 120, height: 120, optimize: true, max_pixels: PNG_PIXELS
-      )
+      result =
+        SafeImage.thumbnail(
+          input: GIF,
+          output: tmp_path("gif.jpg"),
+          width: 120,
+          height: 120,
+          optimize: true,
+          max_pixels: PNG_PIXELS
+        )
       assert_result result, width: 120, height: 120
     end
 
     def test_thumbnail_to_gif_output
       gif_save_or_skip do
-        result = SafeImage.thumbnail(
-          input: GIF, output: tmp_path("thumb.gif"),
-          width: 120, height: 120, max_pixels: PNG_PIXELS
-        )
+        result =
+          SafeImage.thumbnail(
+            input: GIF,
+            output: tmp_path("thumb.gif"),
+            width: 120,
+            height: 120,
+            max_pixels: PNG_PIXELS
+          )
         assert_result result, width: 120, height: 120, format: "gif"
         assert_equal :gif, SafeImage.type(tmp_path("thumb.gif"))
       end
@@ -103,9 +135,7 @@ module SafeImage
     end
 
     def test_resize_of_ico_fails_closed_on_the_vips_backend
-      assert_raises(UnsupportedFormatError) do
-        SafeImage.resize(ICO, tmp_path("ico.png"), 16, 16)
-      end
+      assert_raises(UnsupportedFormatError) { SafeImage.resize(ICO, tmp_path("ico.png"), 16, 16) }
     end
 
     def test_resize_of_ico_with_the_imagemagick_backend
@@ -124,7 +154,8 @@ module SafeImage
 
     def test_thumbnail_to_jxl_output
       jxl_or_skip do
-        result = SafeImage.thumbnail(input: JXL, output: tmp_path("thumb.jxl"), width: 100, height: 65, max_pixels: PNG_PIXELS)
+        result =
+          SafeImage.thumbnail(input: JXL, output: tmp_path("thumb.jxl"), width: 100, height: 65, max_pixels: PNG_PIXELS)
         assert_result result, width: 100, height: 65, format: "jxl"
       end
     end
@@ -167,9 +198,10 @@ module SafeImage
     end
 
     def test_convert_heic_to_jpeg
-      result = heic_or_skip do
-        SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
-      end
+      result =
+        heic_or_skip do
+          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+        end
       assert_result result, width: 846, height: 1129, format: "jpg"
     end
 
@@ -187,10 +219,14 @@ module SafeImage
     end
 
     def test_letter_avatar
-      result = SafeImage.letter_avatar(
-        output: tmp_path("letter.png"),
-        size: 360, background_rgb: [1, 2, 3], letter: "S", font: "Adwaita-Sans"
-      )
+      result =
+        SafeImage.letter_avatar(
+          output: tmp_path("letter.png"),
+          size: 360,
+          background_rgb: [1, 2, 3],
+          letter: "S",
+          font: "Adwaita-Sans"
+        )
       assert_result result, width: 360, height: 360, format: "png"
     end
   end

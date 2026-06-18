@@ -17,8 +17,26 @@ module SafeImage
     }.freeze
 
     OPERATIONS = %w[
-      probe thumbnail type size dimensions info orientation dominant_color optimize resize crop downsize convert convert_to_jpeg fix_orientation
-      convert_favicon_to_png frame_count animated? letter_avatar optimize_image!
+      probe
+      thumbnail
+      type
+      size
+      dimensions
+      info
+      orientation
+      dominant_color
+      optimize
+      resize
+      crop
+      downsize
+      convert
+      convert_to_jpeg
+      fix_orientation
+      convert_favicon_to_png
+      frame_count
+      animated?
+      letter_avatar
+      optimize_image!
       sanitize_svg!
     ].freeze
 
@@ -30,19 +48,11 @@ module SafeImage
     end
 
     def landlock_supported?
-      if defined?(Landlock::SafeExec)
-        Landlock::SafeExec.supported?
-      else
-        Landlock.supported?
-      end
+      defined?(Landlock::SafeExec) ? Landlock::SafeExec.supported? : Landlock.supported?
     end
 
     def landlock_command_error
-      if defined?(Landlock::SafeExec::CommandError)
-        Landlock::SafeExec::CommandError
-      else
-        Landlock::CommandError
-      end
+      defined?(Landlock::SafeExec::CommandError) ? Landlock::SafeExec::CommandError : Landlock::CommandError
     end
 
     def landlock_abi
@@ -89,35 +99,38 @@ module SafeImage
       require "landlock"
       env ||= Runner.command_env(Dir.tmpdir)
 
-      result = landlock_capture!(
-        argv,
-        read: existing_paths([*default_read_paths, *runtime_read_paths, *read]),
-        write: existing_paths(write),
-        execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
-        env: env.merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
-        unsetenv_others: true,
-        timeout: timeout,
-        rlimits: rlimits,
-        seccomp_deny_network: true,
-        max_output_bytes: 512 * 1024,
-        truncate_output: false
-      )
+      result =
+        landlock_capture!(
+          argv,
+          read: existing_paths([*default_read_paths, *runtime_read_paths, *read]),
+          write: existing_paths(write),
+          execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
+          env: env.merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
+          unsetenv_others: true,
+          timeout: timeout,
+          rlimits: rlimits,
+          seccomp_deny_network: true,
+          max_output_bytes: 512 * 1024,
+          truncate_output: false
+        )
       [result.stdout, result.stderr]
     rescue LoadError
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     rescue landlock_command_error => e
       raise CommandError.new(
-        "sandboxed command failed: #{failure_detail(e)}",
-        command: argv,
-        status: e.status&.exitstatus,
-        stdout: e.stdout,
-        stderr: e.stderr
-      )
+              "sandboxed command failed: #{failure_detail(e)}",
+              command: argv,
+              status: e.status&.exitstatus,
+              stdout: e.stdout,
+              stderr: e.stderr
+            )
     end
 
     def public_call!(operation, args:, kwargs:)
       operation = operation.to_s
-      raise ArgumentError, "unsupported sandbox operation: #{operation}" unless OPERATIONS.include?(operation)
+      if OPERATIONS.none? { |candidate| candidate == operation }
+        raise ArgumentError, "unsupported sandbox operation: #{operation}"
+      end
       request = { args: args, kwargs: kwargs }
       if SafeImage.config.backend == :vips && native_helper_operation?(operation, request)
         result = native_helper_public_call!(operation, request)
@@ -129,7 +142,20 @@ module SafeImage
 
     def native_helper_operation?(operation, request)
       return false if operation == "thumbnail" && request[:kwargs]&.fetch(:optimize, false)
-      return false unless %w[probe type size dimensions info orientation dominant_color frame_count animated? thumbnail].include?(operation)
+      if %w[
+           probe
+           type
+           size
+           dimensions
+           info
+           orientation
+           dominant_color
+           frame_count
+           animated?
+           thumbnail
+         ].none? { |candidate| candidate == operation }
+        return false
+      end
 
       path = request[:kwargs]&.fetch(:input, nil) || Array(request[:args]).first
       return true if operation == "thumbnail"
@@ -210,7 +236,14 @@ module SafeImage
       info = NativeHelper.thumbnail(input, output, width, height, format, quality, max_pixels)
       opt_info = nil
       if kwargs[:optimize] && Processor::OPTIMIZABLE_OUTPUTS.include?(format)
-        opt_info = Optimizer.optimize(output, mode: kwargs.fetch(:optimize_mode, :lossless), strip_metadata: true, quality: format == "jpg" ? quality : nil, assume_upright: true)
+        opt_info =
+          Optimizer.optimize(
+            output,
+            mode: kwargs.fetch(:optimize_mode, :lossless),
+            strip_metadata: true,
+            quality: format == "jpg" ? quality : nil,
+            assume_upright: true
+          )
       end
       Result.new(
         input: input,
@@ -228,22 +261,28 @@ module SafeImage
 
     def run_worker!(operation, request)
       operation = operation.to_s
-      raise ArgumentError, "unsupported sandbox operation: #{operation}" unless OPERATIONS.include?(operation)
+      if OPERATIONS.none? { |candidate| candidate == operation }
+        raise ArgumentError, "unsupported sandbox operation: #{operation}"
+      end
 
       require "landlock"
       config = SafeImage.config
-      payload = JSON.dump(
-        {
-          operation: operation,
-          # JSON has no symbol type; wrap symbol values so the worker can restore
-          # them (e.g. id_namespace: :standalone must not arrive as the string
-          # "standalone", which resolve_namespace would treat as a real namespace).
-          request: deep_encode_symbols(request),
-          # The worker is a fresh process and must be configured like the
-          # parent — minus landlock, since it already runs inside the sandbox.
-          config: { backend: config.backend, max_pixels: config.max_pixels }
-        }
-      )
+      payload =
+        JSON.dump(
+          {
+            operation: operation,
+            # JSON has no symbol type; wrap symbol values so the worker can restore
+            # them (e.g. id_namespace: :standalone must not arrive as the string
+            # "standalone", which resolve_namespace would treat as a real namespace).
+            request: deep_encode_symbols(request),
+            # The worker is a fresh process and must be configured like the
+            # parent — minus landlock, since it already runs inside the sandbox.
+            config: {
+              backend: config.backend,
+              max_pixels: config.max_pixels
+            }
+          }
+        )
       code = <<~'RUBY'
         require "json"
         require "safe_image"
@@ -293,54 +332,52 @@ module SafeImage
 
       paths = sandbox_paths(request, operation)
       Dir.mktmpdir("safe-image-worker-") do |tmpdir|
-        worker_env = Runner.command_env(tmpdir).merge(
-          "SAFE_IMAGE_SANDBOX_CHILD" => "1",
-          "GEM_HOME" => ENV["GEM_HOME"].to_s,
-          "GEM_PATH" => ENV["GEM_PATH"].to_s,
-          "RUBYLIB" => $LOAD_PATH.select { |p| p && File.directory?(p) }.join(File::PATH_SEPARATOR)
-        )
+        worker_env =
+          Runner.command_env(tmpdir).merge(
+            "SAFE_IMAGE_SANDBOX_CHILD" => "1",
+            "GEM_HOME" => ENV["GEM_HOME"].to_s,
+            "GEM_PATH" => ENV["GEM_PATH"].to_s,
+            "RUBYLIB" => $LOAD_PATH.select { |p| p && File.directory?(p) }.join(File::PATH_SEPARATOR)
+          )
 
-        stdout, = landlock_capture!(
-          [
-            RbConfig.ruby,
-            "-I#{File.expand_path("../../", __dir__)}",
-            "-rjson",
-            "-e",
-            code,
-            payload
-          ],
-          read: existing_paths([*default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir]),
-          write: existing_paths([*paths.fetch(:write), tmpdir]),
-          execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
-          env: worker_env,
-          unsetenv_others: true,
-          timeout: Runner::DEFAULT_TIMEOUT,
-          rlimits: DEFAULT_RLIMITS,
-          seccomp_deny_network: true,
-          max_output_bytes: 512 * 1024,
-          truncate_output: false
-        )
+        stdout, =
+          landlock_capture!(
+            [RbConfig.ruby, "-I#{File.expand_path("../../", __dir__)}", "-rjson", "-e", code, payload],
+            read: existing_paths([*default_read_paths, *runtime_read_paths, *paths.fetch(:read), tmpdir]),
+            write: existing_paths([*paths.fetch(:write), tmpdir]),
+            execute: existing_paths([*default_execute_paths, File.dirname(RbConfig.ruby)]),
+            env: worker_env,
+            unsetenv_others: true,
+            timeout: Runner::DEFAULT_TIMEOUT,
+            rlimits: DEFAULT_RLIMITS,
+            seccomp_deny_network: true,
+            max_output_bytes: 512 * 1024,
+            truncate_output: false
+          )
         decode_payload(JSON.parse(stdout, symbolize_names: true))
       end
     rescue LoadError
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     rescue landlock_command_error => e
       raise CommandError.new(
-        "sandboxed worker failed: #{failure_detail(e)}",
-        command: [RbConfig.ruby, "-e", "..."],
-        status: e.status&.exitstatus,
-        stdout: e.stdout,
-        stderr: e.stderr
-      )
+              "sandboxed worker failed: #{failure_detail(e)}",
+              command: [RbConfig.ruby, "-e", "..."],
+              status: e.status&.exitstatus,
+              stdout: e.stdout,
+              stderr: e.stderr
+            )
     end
 
     # Rebuilds a worker's {__type:, data:} JSON reply into the value the
     # caller would have received inline.
     def decode_payload(response)
       case response[:__type]
-      when "Result" then Result.new(**response.fetch(:data))
-      when "Info" then Info.new(**response.fetch(:data))
-      else response[:data]
+      when "Result"
+        Result.new(**response.fetch(:data))
+      when "Info"
+        Info.new(**response.fetch(:data))
+      else
+        response[:data]
       end
     end
 
@@ -370,7 +407,12 @@ module SafeImage
         next unless value.is_a?(String)
         next if value.empty? || value.include?("\0")
 
-        expanded = File.expand_path(value) rescue next
+        expanded =
+          begin
+            File.expand_path(value)
+          rescue StandardError
+            next
+          end
         if File.exist?(expanded)
           read << expanded
         elsif looks_like_path?(value)

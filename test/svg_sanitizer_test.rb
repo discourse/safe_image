@@ -215,10 +215,14 @@ module SafeImage
       SafeImage.sanitize_svg!(path, id_namespace: :standalone)
       cleaned = File.read(path)
 
-      %w[stroke-dasharray:6,3 vector-effect:non-scaling-stroke display:inline
-         font-style:italic letter-spacing:1px paint-order:stroke].each do |decl|
-        assert_includes cleaned, decl, "dropped #{decl} from real Inkscape style"
-      end
+      %w[
+        stroke-dasharray:6,3
+        vector-effect:non-scaling-stroke
+        display:inline
+        font-style:italic
+        letter-spacing:1px
+        paint-order:stroke
+      ].each { |decl| assert_includes cleaned, decl, "dropped #{decl} from real Inkscape style" }
       refute_includes cleaned, "sodipodi", "kept editor namespace cruft"
     end
 
@@ -358,11 +362,12 @@ module SafeImage
       cleaned = File.read(path)
 
       # every class token in every class attribute is namespaced (no bare token)
-      cleaned.scan(/class="([^"]*)"/).flatten.each do |attr|
-        attr.split.each do |token|
-          assert token.start_with?("u1-"), "bare class token #{token.inspect} survived"
+      cleaned
+        .scan(/class="([^"]*)"/)
+        .flatten
+        .each do |attr|
+          attr.split.each { |token| assert token.start_with?("u1-"), "bare class token #{token.inspect} survived" }
         end
-      end
       assert_includes cleaned, 'class="u1-modal u1-fixed u1-scope"', "root classes not namespaced"
       assert_includes cleaned, 'class="u1-st0 u1-btn-danger u1-active"', "element classes not namespaced"
       # internal class styling still matches: selector classes are prefixed the same way

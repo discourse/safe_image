@@ -14,10 +14,15 @@ module SafeImage
     end
 
     def test_explicit_max_pixels_overrides_the_default_cap
-      result = SafeImage.thumbnail(
-        input: bomb, output: tmp_path("ok.png"),
-        width: 32, height: 32, optimize: false, max_pixels: 200_000_000
-      )
+      result =
+        SafeImage.thumbnail(
+          input: bomb,
+          output: tmp_path("ok.png"),
+          width: 32,
+          height: 32,
+          optimize: false,
+          max_pixels: 200_000_000
+        )
       assert_result result, width: 32, height: 32
     end
 

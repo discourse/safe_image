@@ -30,9 +30,8 @@ module SafeImage
     end
 
     def test_drops_unknown_at_rule_and_quoted_declarations_individually
-      kept = SvgCss.sanitize_declarations(
-        "@import url(#x);fill:red;font-family:'Comic Sans';background:red;cursor:pointer"
-      )
+      kept =
+        SvgCss.sanitize_declarations("@import url(#x);fill:red;font-family:'Comic Sans';background:red;cursor:pointer")
       assert_equal "fill:red", kept
     end
 
@@ -86,24 +85,21 @@ module SafeImage
         "paint-order:stroke fill markers" => "paint-order:stroke fill markers",
         "letter-spacing:1px" => "letter-spacing:1px",
         "font-style:italic" => "font-style:italic"
-      }.each do |input, expected|
-        assert_equal expected, SvgCss.sanitize_declarations(input), input
-      end
+      }.each { |input, expected| assert_equal expected, SvgCss.sanitize_declarations(input), input }
     end
 
     def test_keeps_important_flag
       assert_equal "fill:red!important", SvgCss.sanitize_declarations("fill:red !important")
       assert_equal "fill:red!important", SvgCss.sanitize_declarations("fill: red ! IMPORTANT")
       assert_equal "fill:url(#g)!important", SvgCss.sanitize_declarations("fill:url(#g) !important")
-      assert_equal "fill:red!important;stroke:none",
-                   SvgCss.sanitize_declarations("fill:red !important; stroke:none")
+      assert_equal "fill:red!important;stroke:none", SvgCss.sanitize_declarations("fill:red !important; stroke:none")
     end
 
     def test_important_flag_does_not_open_a_hole
-      assert_nil SvgCss.sanitize_declarations("fill:red !importantX")        # not the keyword
+      assert_nil SvgCss.sanitize_declarations("fill:red !importantX") # not the keyword
       assert_nil SvgCss.sanitize_declarations("fill:red !important !important") # only trailing one stripped
-      assert_nil SvgCss.sanitize_declarations("fill:ur\\6c(#x) !important")   # escape still caught
-      assert_nil SvgCss.sanitize_declarations("fill:red !important@import")   # at-rule junk
+      assert_nil SvgCss.sanitize_declarations("fill:ur\\6c(#x) !important") # escape still caught
+      assert_nil SvgCss.sanitize_declarations("fill:red !important@import") # at-rule junk
     end
 
     def test_keeps_modern_color_alpha
@@ -115,18 +111,26 @@ module SafeImage
 
     # The slash relaxation must not let comments or non-color slashes survive.
     def test_slash_does_not_open_comment_or_path_holes
-      ["fill:red/**/", "fill:red/*x*/blue", "fill:rgb(0 0 0)/* */", "fill:red/*", # comments need *, charset blocks
-       "fill:url(/evil)", "fill:url(//evil.example/x)",                            # paths still fragment-only
-       "fill:red / blue", "transform:translate(1 / 2)",                            # slash only in color alpha
-       "fill:rgb(0 0 0 / )", "fill:rgb(0 0 0 / url(#x))"].each do |css|            # malformed alpha
+      [
+        "fill:red/**/",
+        "fill:red/*x*/blue",
+        "fill:rgb(0 0 0)/* */",
+        "fill:red/*", # comments need *, charset blocks
+        "fill:url(/evil)",
+        "fill:url(//evil.example/x)", # paths still fragment-only
+        "fill:red / blue",
+        "transform:translate(1 / 2)", # slash only in color alpha
+        "fill:rgb(0 0 0 / )",
+        "fill:rgb(0 0 0 / url(#x))"
+      ].each do |css| # malformed alpha
         assert_nil SvgCss.sanitize_declarations(css), css
       end
     end
 
     def test_extended_properties_still_reject_external_and_function_misuse
       assert_nil SvgCss.sanitize_declarations("marker-end:url(http://evil.example/x)")
-      assert_nil SvgCss.sanitize_declarations("display:url(#x)")        # no function on a keyword property
-      assert_nil SvgCss.sanitize_declarations("color:url(#x)")          # color takes no url()
+      assert_nil SvgCss.sanitize_declarations("display:url(#x)") # no function on a keyword property
+      assert_nil SvgCss.sanitize_declarations("color:url(#x)") # color takes no url()
       assert_nil SvgCss.sanitize_declarations("vector-effect:ur\\6c(#x)")
     end
 
@@ -181,9 +185,11 @@ module SafeImage
     end
 
     def test_namespace_scopes_selectors_and_prefixes_ids_and_classes
-      out = SvgCss.sanitize_stylesheet(".box{fill:url(#g)} #ico{stroke:red} *{opacity:.5} rect{fill:#abc}", namespace: "ns")
+      out =
+        SvgCss.sanitize_stylesheet(".box{fill:url(#g)} #ico{stroke:red} *{opacity:.5} rect{fill:#abc}", namespace: "ns")
       # ids AND classes are namespaced; type/universal are confined by the scope
-      assert_equal ".ns-scope .ns-box{fill:url(#ns-g)}.ns-scope #ns-ico{stroke:red}.ns-scope *{opacity:.5}.ns-scope rect{fill:#abc}", out
+      assert_equal ".ns-scope .ns-box{fill:url(#ns-g)}.ns-scope #ns-ico{stroke:red}.ns-scope *{opacity:.5}.ns-scope rect{fill:#abc}",
+                   out
       # every selector is anchored under the scope class, so none can match a host element
       refute_match(/(?<!-scope )(?<!,)\*\{/, out)
     end
@@ -205,7 +211,8 @@ module SafeImage
     # here only when its presentation-attribute twin is already allowlisted.
     def test_property_allowlist_mirrors_presentation_attributes
       SvgCss::ALLOWED_PROPERTIES.each_key do |property|
-        assert_includes SvgSanitizer::ALLOWED_ATTRIBUTES, property,
+        assert_includes SvgSanitizer::ALLOWED_ATTRIBUTES,
+                        property,
                         "CSS property #{property} has no allowlisted presentation-attribute twin"
       end
     end

@@ -3,19 +3,29 @@
 require_relative "safe_image/version"
 
 module SafeImage
-  class Error < StandardError; end
+  class Error < StandardError
+  end
 
   # Raised when any operation is attempted before SafeImage.configure!.
-  class NotConfiguredError < Error; end
+  class NotConfiguredError < Error
+  end
 
-  class UnsupportedFormatError < Error; end
+  class UnsupportedFormatError < Error
+  end
 
   # Raised when libvips cannot be loaded at runtime. configure!(backend: :vips)
   # surfaces this at boot; operations never fall back to ImageMagick.
-  class VipsUnavailableError < UnsupportedFormatError; end
-  class UnsafePathError < Error; end
-  class InvalidImageError < Error; end
-  class LimitError < Error; end
+  class VipsUnavailableError < UnsupportedFormatError
+  end
+
+  class UnsafePathError < Error
+  end
+
+  class InvalidImageError < Error
+  end
+
+  class LimitError < Error
+  end
 
   # Default decompression-bomb ceiling when configure! is not given an explicit
   # max_pixels. Mirrored in the native binding (SAFE_IMAGE_DEFAULT_MAX_PIXELS)
@@ -63,10 +73,10 @@ module SafeImage
   # the first request.
   def configure!(backend:, landlock:, max_pixels: DEFAULT_MAX_PIXELS)
     backend = backend.to_sym
-    unless BACKENDS.include?(backend)
+    if BACKENDS.none? { |candidate| candidate == backend }
       raise ArgumentError, "unknown backend: #{backend.inspect} (expected :vips or :imagemagick)"
     end
-    unless [true, false].include?(landlock)
+    unless [true, false].any? { |candidate| candidate == landlock }
       raise ArgumentError, "landlock must be true or false, got: #{landlock.inspect}"
     end
     max_pixels = Integer(max_pixels)
@@ -87,15 +97,17 @@ module SafeImage
     if landlock && !Sandbox.available?
       raise Error, "landlock: true requested but the Landlock sandbox is unavailable on this host"
     end
-    if landlock && backend == :vips
-      NativeHelper.ensure_available!
-    end
+    NativeHelper.ensure_available! if landlock && backend == :vips
 
     @config = Config.new(backend: backend, landlock: landlock, max_pixels: max_pixels)
   end
 
   def config
-    @config || raise(NotConfiguredError, "call SafeImage.configure!(backend: :vips | :imagemagick, landlock: true | false) before using SafeImage")
+    @config ||
+      raise(
+        NotConfiguredError,
+        "call SafeImage.configure!(backend: :vips | :imagemagick, landlock: true | false) before using SafeImage"
+      )
   end
 
   def configured? = !@config.nil?
@@ -197,7 +209,15 @@ module SafeImage
   end
 
   def info(path, max_pixels: nil, animated: false, orientation: false)
-    maybe_sandbox(:info, args: [path], kwargs: { max_pixels: max_pixels, animated: animated, orientation: orientation }) do
+    maybe_sandbox(
+      :info,
+      args: [path],
+      kwargs: {
+        max_pixels: max_pixels,
+        animated: animated,
+        orientation: orientation
+      }
+    ) do
       result = probe(path, max_pixels: max_pixels)
       type = fastimage_type(result.input_format)
       Info.new(
@@ -295,7 +315,18 @@ module SafeImage
     Remote.fetch(url, **kwargs, &block)
   end
 
-  def thumbnail(input:, output:, width:, height:, format: nil, quality: 85, max_pixels: nil, optimize: false, optimize_mode: :lossless, chroma_subsampling: :auto)
+  def thumbnail(
+    input:,
+    output:,
+    width:,
+    height:,
+    format: nil,
+    quality: 85,
+    max_pixels: nil,
+    optimize: false,
+    optimize_mode: :lossless,
+    chroma_subsampling: :auto
+  )
     maybe_sandbox(
       :thumbnail,
       kwargs: {
@@ -325,9 +356,16 @@ module SafeImage
   end
 
   def optimize(path, mode: :lossless, strip_metadata: true, quality: nil, strict: true)
-    maybe_sandbox(:optimize, args: [path], kwargs: { mode: mode, strip_metadata: strip_metadata, quality: quality, strict: strict }) do
-      Optimizer.optimize(path, mode: mode, strip_metadata: strip_metadata, quality: quality, strict: strict)
-    end
+    maybe_sandbox(
+      :optimize,
+      args: [path],
+      kwargs: {
+        mode: mode,
+        strip_metadata: strip_metadata,
+        quality: quality,
+        strict: strict
+      }
+    ) { Optimizer.optimize(path, mode: mode, strip_metadata: strip_metadata, quality: quality, strict: strict) }
   end
 
   def resize(*args, **kwargs)
@@ -355,7 +393,9 @@ module SafeImage
   end
 
   def convert_favicon_to_png(*args, **kwargs)
-    maybe_sandbox(:convert_favicon_to_png, args: args, kwargs: kwargs) { DiscourseCompat.convert_favicon_to_png(*args, **kwargs) }
+    maybe_sandbox(:convert_favicon_to_png, args: args, kwargs: kwargs) do
+      DiscourseCompat.convert_favicon_to_png(*args, **kwargs)
+    end
   end
 
   def frame_count(*args, **kwargs)

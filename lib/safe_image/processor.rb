@@ -46,7 +46,7 @@ module SafeImage
 
       out_format = (format || output.extname.delete_prefix(".")).downcase
       out_format = "jpg" if out_format == "jpeg"
-      unless SUPPORTED_OUTPUTS.include?(out_format)
+      if SUPPORTED_OUTPUTS.none? { |candidate| candidate == out_format }
         raise UnsupportedFormatError, "unsupported output format: #{out_format.inspect}"
       end
 
@@ -54,7 +54,14 @@ module SafeImage
       backend = SafeImage.config.backend
       info =
         if out_format == "jpg" && use_jpegli_for_generated_jpeg?(backend)
-          jpegli_thumbnail(input: input, output: output, width: width, height: height, quality: quality, source_format: input.extname.delete_prefix(".").downcase)
+          jpegli_thumbnail(
+            input: input,
+            output: output,
+            width: width,
+            height: height,
+            quality: quality,
+            source_format: input.extname.delete_prefix(".").downcase
+          )
         else
           case backend
           when :vips
@@ -75,7 +82,14 @@ module SafeImage
 
       opt_info = nil
       if optimize && OPTIMIZABLE_OUTPUTS.include?(out_format)
-        opt_info = Optimizer.optimize(output, mode: optimize_mode, strip_metadata: true, quality: out_format == "jpg" ? quality : nil, assume_upright: true)
+        opt_info =
+          Optimizer.optimize(
+            output,
+            mode: optimize_mode,
+            strip_metadata: true,
+            quality: out_format == "jpg" ? quality : nil,
+            assume_upright: true
+          )
       end
 
       Result.new(
@@ -111,7 +125,11 @@ module SafeImage
           input: tmp_path,
           output: output,
           quality: quality,
-          chroma_subsampling: JpegliBackend.validate_chroma_subsampling!(@chroma_subsampling, input_format: normalized_source_format(source_format)),
+          chroma_subsampling:
+            JpegliBackend.validate_chroma_subsampling!(
+              @chroma_subsampling,
+              input_format: normalized_source_format(source_format)
+            ),
           input_format: normalized_source_format(source_format)
         )
       ensure
@@ -133,7 +151,9 @@ module SafeImage
       path = PathSafety.ensure_regular_file!(path)
       ext = path.extname.delete_prefix(".").downcase
       ext = "jpg" if ext == "jpeg"
-      raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}" unless SUPPORTED_INPUTS.include?(ext)
+      if SUPPORTED_INPUTS.none? { |candidate| candidate == ext }
+        raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}"
+      end
       path
     end
 

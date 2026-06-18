@@ -39,7 +39,15 @@ module SafeImage
     end
 
     def test_thumbnail_and_resize
-      thumb = SafeImage.thumbnail(input: JPG, output: tmp_path("thumb.jpg"), width: 600, height: 400, optimize: true, max_pixels: JPG_PIXELS)
+      thumb =
+        SafeImage.thumbnail(
+          input: JPG,
+          output: tmp_path("thumb.jpg"),
+          width: 600,
+          height: 400,
+          optimize: true,
+          max_pixels: JPG_PIXELS
+        )
       assert_result thumb, width: 600, height: 400
 
       resized = SafeImage.resize(JPG, tmp_path("resize.jpg"), 600, 400, optimize: true, max_pixels: JPG_PIXELS)
@@ -68,9 +76,10 @@ module SafeImage
       png = SafeImage.convert(PNG, tmp_path("png.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
       assert_result png, width: 2032, height: 1312
 
-      heic = heic_or_skip do
-        SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
-      end
+      heic =
+        heic_or_skip do
+          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+        end
       assert_result heic, width: 846, height: 1129
     end
 
@@ -85,7 +94,14 @@ module SafeImage
     end
 
     def test_letter_avatar
-      result = SafeImage.letter_avatar(output: tmp_path("letter.png"), size: 360, background_rgb: [1, 2, 3], letter: "S", font: "Adwaita-Sans")
+      result =
+        SafeImage.letter_avatar(
+          output: tmp_path("letter.png"),
+          size: 360,
+          background_rgb: [1, 2, 3],
+          letter: "S",
+          font: "Adwaita-Sans"
+        )
       assert_result result, width: 360, height: 360
     end
 
@@ -96,7 +112,8 @@ module SafeImage
     end
 
     def test_thumbnail_of_animated_webp
-      result = SafeImage.thumbnail(input: WEBP, output: tmp_path("webp.jpg"), width: 120, height: 120, max_pixels: PNG_PIXELS)
+      result =
+        SafeImage.thumbnail(input: WEBP, output: tmp_path("webp.jpg"), width: 120, height: 120, max_pixels: PNG_PIXELS)
       assert_result result, width: 120, height: 120
     end
 

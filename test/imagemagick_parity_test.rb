@@ -17,9 +17,25 @@ module SafeImage
     def test_resize_matches_reference_pipeline
       expected = tmp_path("reference.jpg")
       reference_convert(
-        "jpeg:#{JPG}[0]", "-auto-orient", "-gravity", "center", "-background", "transparent",
-        "-thumbnail", "600x400^", "-extent", "600x400", "-interpolate", "catrom",
-        "-unsharp", "2x0.5+0.7+0", "-interlace", "none", "-profile", PROFILE, expected
+        "jpeg:#{JPG}[0]",
+        "-auto-orient",
+        "-gravity",
+        "center",
+        "-background",
+        "transparent",
+        "-thumbnail",
+        "600x400^",
+        "-extent",
+        "600x400",
+        "-interpolate",
+        "catrom",
+        "-unsharp",
+        "2x0.5+0.7+0",
+        "-interlace",
+        "none",
+        "-profile",
+        PROFILE,
+        expected
       )
 
       actual = tmp_path("actual.jpg")
@@ -31,9 +47,23 @@ module SafeImage
     def test_crop_matches_reference_pipeline
       expected = tmp_path("reference.jpg")
       reference_convert(
-        "jpeg:#{JPG}[0]", "-auto-orient", "-gravity", "north", "-background", "transparent",
-        "-thumbnail", "400x400^", "-crop", "400x400+0+0", "-unsharp", "2x0.5+0.7+0",
-        "-interlace", "none", "-profile", PROFILE, expected
+        "jpeg:#{JPG}[0]",
+        "-auto-orient",
+        "-gravity",
+        "north",
+        "-background",
+        "transparent",
+        "-thumbnail",
+        "400x400^",
+        "-crop",
+        "400x400+0+0",
+        "-unsharp",
+        "2x0.5+0.7+0",
+        "-interlace",
+        "none",
+        "-profile",
+        PROFILE,
+        expected
       )
 
       actual = tmp_path("actual.jpg")
@@ -45,8 +75,19 @@ module SafeImage
     def test_downsize_matches_reference_pipeline
       expected = tmp_path("reference.png")
       reference_convert(
-        "png:#{PNG}[0]", "-auto-orient", "-gravity", "center", "-background", "transparent",
-        "-interlace", "none", "-resize", "50%", "-profile", PROFILE, expected
+        "png:#{PNG}[0]",
+        "-auto-orient",
+        "-gravity",
+        "center",
+        "-background",
+        "transparent",
+        "-interlace",
+        "none",
+        "-resize",
+        "50%",
+        "-profile",
+        PROFILE,
+        expected
       )
 
       actual = tmp_path("actual.png")

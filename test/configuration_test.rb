@@ -38,15 +38,17 @@ module SafeImage
     def test_operations_before_configure_raise_not_configured
       svg = write_tmp("plain.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>')
       env = { "JPG" => JPG, "SVG" => svg, "OUT" => tmpdir }
-      stdout, stderr, status = Open3.capture3(env, RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", UNCONFIGURED_SCRIPT)
+      stdout, stderr, status =
+        Open3.capture3(env, RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", UNCONFIGURED_SCRIPT)
 
       assert status.success?, "unconfigured child process failed:\n#{stderr}"
       out = JSON.parse(stdout.lines.last)
 
       assert_equal false, out["configured?"]
       %w[probe thumbnail dominant_color sanitize_svg! fetch_remote].each do |operation|
-        assert_includes out.fetch(operation), "SafeImage.configure!",
-          "#{operation} must raise NotConfiguredError with the call to make"
+        assert_includes out.fetch(operation),
+                        "SafeImage.configure!",
+                        "#{operation} must raise NotConfiguredError with the call to make"
       end
       refute_path_exists tmp_path("x.jpg"), "thumbnail ran before configure!"
     end

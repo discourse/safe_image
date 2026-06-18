@@ -83,7 +83,12 @@ module SafeImage
               buffer << chunk
               if buffer.bytesize > MAX_OUTPUT_BYTES
                 kill_process_group(wait_thr.pid)
-                raise CommandError.new("command output exceeded #{MAX_OUTPUT_BYTES} bytes", command: argv, stdout: stdout, stderr: stderr)
+                raise CommandError.new(
+                        "command output exceeded #{MAX_OUTPUT_BYTES} bytes",
+                        command: argv,
+                        stdout: stdout,
+                        stderr: stderr
+                      )
               end
             rescue IO::WaitReadable
               next
@@ -114,15 +119,15 @@ module SafeImage
         raise
       end
 
-      return [stdout, stderr] if status&.success?
+      return stdout, stderr if status&.success?
 
       raise CommandError.new(
-        "command failed: #{argv.first} exited #{status&.exitstatus}",
-        command: argv,
-        status: status&.exitstatus,
-        stdout: stdout,
-        stderr: stderr
-      )
+              "command failed: #{argv.first} exited #{status&.exitstatus}",
+              command: argv,
+              status: status&.exitstatus,
+              stdout: stdout,
+              stderr: stderr
+            )
     end
 
     def kill_process_group(pid)
@@ -137,10 +142,11 @@ module SafeImage
     end
 
     def command_env(tmpdir, env = {})
-      allowed = env.each_with_object({}) do |(key, value), hash|
-        key = key.to_s
-        hash[key] = value.to_s if ALLOWED_ENV_KEYS.include?(key)
-      end
+      allowed =
+        env.each_with_object({}) do |(key, value), hash|
+          key = key.to_s
+          hash[key] = value.to_s if ALLOWED_ENV_KEYS.include?(key)
+        end
 
       BASE_ENV.merge(
         "MAGICK_CONFIGURE_PATH" => IMAGEMAGICK_POLICY_PATH,
@@ -171,10 +177,12 @@ module SafeImage
       name = name.to_s
       return name if name.include?(File::SEPARATOR) && File.file?(name) && File.executable?(name)
 
-      TRUSTED_PATH.split(File::PATH_SEPARATOR).each do |dir|
-        path = File.join(dir, name)
-        return path if File.file?(path) && File.executable?(path)
-      end
+      TRUSTED_PATH
+        .split(File::PATH_SEPARATOR)
+        .each do |dir|
+          path = File.join(dir, name)
+          return path if File.file?(path) && File.executable?(path)
+        end
 
       nil
     end

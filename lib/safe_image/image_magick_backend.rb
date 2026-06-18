@@ -18,13 +18,25 @@ module SafeImage
       "jxl" => "jxl"
     }.freeze
 
-    IMAGEMAGICK_LIMIT_ARGS = [
-      "-limit", "memory", "256MiB",
-      "-limit", "map", "512MiB",
-      "-limit", "disk", "1GiB",
-      "-limit", "area", "128MP",
-      "-limit", "time", "20",
-      "-limit", "thread", "2"
+    IMAGEMAGICK_LIMIT_ARGS = %w[
+      -limit
+      memory
+      256MiB
+      -limit
+      map
+      512MiB
+      -limit
+      disk
+      1GiB
+      -limit
+      area
+      128MP
+      -limit
+      time
+      20
+      -limit
+      thread
+      2
     ].freeze
 
     ALLOWED_FONTS = %w[NimbusSans-Regular DejaVu-Sans Liberation-Sans Arial Helvetica Adwaita-Sans].freeze
@@ -33,8 +45,13 @@ module SafeImage
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
       path = PathSafety.ensure_imagemagick_input_file!(path)
       ext = File.extname(path).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      stdout, = Runner.run!(["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%m %w %h %n\n", "#{decoder}:#{path}"], timeout: timeout)
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, =
+        Runner.run!(
+          ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%m %w %h %n\n", "#{decoder}:#{path}"],
+          timeout: timeout
+        )
       _magick_format, width, height, frames = stdout.each_line.first.to_s.split
       width = width.to_i
       height = height.to_i
@@ -45,7 +62,16 @@ module SafeImage
     end
 
     def thumbnail(input:, output:, width:, height:, format:, quality:, timeout: Runner::DEFAULT_TIMEOUT)
-      resize_like(input: input, output: output, width: width, height: height, format: format, quality: quality, crop: :centre, timeout: timeout)
+      resize_like(
+        input: input,
+        output: output,
+        width: width,
+        height: height,
+        format: format,
+        quality: quality,
+        crop: :centre,
+        timeout: timeout
+      )
     end
 
     def resize_like(input:, output:, width:, height:, format:, quality:, crop: false, timeout: Runner::DEFAULT_TIMEOUT)
@@ -55,29 +81,47 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
       ext = File.extname(input).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
 
       quality = validate_quality!(quality)
       argv = [command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{input}[0]", "-auto-orient"]
       if crop == :north
-        argv.concat([
-          "-gravity", "north",
-          "-background", "transparent",
-          "-thumbnail", "#{Integer(width)}x#{Integer(height)}^",
-          "-crop", "#{Integer(width)}x#{Integer(height)}+0+0",
-          "-unsharp", "2x0.5+0.7+0",
-          "-interlace", "none"
-        ])
+        argv.concat(
+          [
+            "-gravity",
+            "north",
+            "-background",
+            "transparent",
+            "-thumbnail",
+            "#{Integer(width)}x#{Integer(height)}^",
+            "-crop",
+            "#{Integer(width)}x#{Integer(height)}+0+0",
+            "-unsharp",
+            "2x0.5+0.7+0",
+            "-interlace",
+            "none"
+          ]
+        )
       else
-        argv.concat([
-          "-gravity", "center",
-          "-background", "transparent",
-          "-thumbnail", "#{Integer(width)}x#{Integer(height)}^",
-          "-extent", "#{Integer(width)}x#{Integer(height)}",
-          "-interpolate", "catrom",
-          "-unsharp", "2x0.5+0.7+0",
-          "-interlace", "none"
-        ])
+        argv.concat(
+          [
+            "-gravity",
+            "center",
+            "-background",
+            "transparent",
+            "-thumbnail",
+            "#{Integer(width)}x#{Integer(height)}^",
+            "-extent",
+            "#{Integer(width)}x#{Integer(height)}",
+            "-interpolate",
+            "catrom",
+            "-unsharp",
+            "2x0.5+0.7+0",
+            "-interlace",
+            "none"
+          ]
+        )
       end
       argv.concat(["-profile", DEFAULT_PROFILE]) if File.file?(DEFAULT_PROFILE)
       argv.concat(["-quality", quality.to_s]) if quality
@@ -93,15 +137,22 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
       ext = File.extname(input).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
       dimensions = validate_dimensions!(dimensions)
       argv = [
-        command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{input}[0]",
+        command,
+        *IMAGEMAGICK_LIMIT_ARGS,
+        "#{decoder}:#{input}[0]",
         "-auto-orient",
-        "-gravity", "center",
-        "-background", "transparent",
-        "-interlace", "none",
-        "-resize", dimensions,
+        "-gravity",
+        "center",
+        "-background",
+        "transparent",
+        "-interlace",
+        "none",
+        "-resize",
+        dimensions
       ]
       argv.concat(["-profile", DEFAULT_PROFILE]) if File.file?(DEFAULT_PROFILE)
       argv << output_spec(format, output)
@@ -114,14 +165,15 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
       ext = File.extname(input).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
       normalized_format = format.to_s.downcase
       normalized_format = "jpg" if normalized_format == "jpeg"
       output_arg = output_spec(normalized_format, output)
       quality = validate_quality!(quality)
 
       argv = [command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{input}[0]", "-auto-orient", "-interlace", "none"]
-      argv.concat(["-background", "white", "-flatten"]) if normalized_format == "jpg"
+      argv.concat(%w[-background white -flatten]) if normalized_format == "jpg"
       argv.concat(["-quality", quality.to_s]) if quality
       argv << output_arg
       run_image_command(argv, output, ext, normalized_format, timeout)
@@ -136,7 +188,15 @@ module SafeImage
       input = PathSafety.ensure_imagemagick_input_file!(input)
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
-      argv = [command, *IMAGEMAGICK_LIMIT_ARGS, "ico:#{input}[-1]", "-auto-orient", "-background", "transparent", output_spec("png", output)]
+      argv = [
+        command,
+        *IMAGEMAGICK_LIMIT_ARGS,
+        "ico:#{input}[-1]",
+        "-auto-orient",
+        "-background",
+        "transparent",
+        output_spec("png", output)
+      ]
       run_image_command(argv, output, "ico", "png", timeout)
     end
 
@@ -144,8 +204,13 @@ module SafeImage
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
       path = PathSafety.ensure_imagemagick_input_file!(path)
       ext = File.extname(path).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      stdout, = Runner.run!(["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%w %h %n\n", "#{decoder}:#{path}"], timeout: timeout)
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, =
+        Runner.run!(
+          ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%w %h %n\n", "#{decoder}:#{path}"],
+          timeout: timeout
+        )
       width, height, frames = stdout.each_line.first.to_s.split.map(&:to_i)
       if max_pixels && width.to_i * height.to_i > Integer(max_pixels)
         raise LimitError, "image has #{width * height} pixels, exceeds #{max_pixels}"
@@ -157,11 +222,13 @@ module SafeImage
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
       path = PathSafety.ensure_imagemagick_input_file!(path)
       ext = File.extname(path).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      stdout, = Runner.run!(
-        ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%[EXIF:Orientation]", "#{decoder}:#{path}[0]"],
-        timeout: timeout
-      )
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, =
+        Runner.run!(
+          ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%[EXIF:Orientation]", "#{decoder}:#{path}[0]"],
+          timeout: timeout
+        )
       value = stdout.to_s.strip
       value.empty? ? 1 : value.to_i
     rescue CommandError
@@ -174,18 +241,26 @@ module SafeImage
       command = convert_command
       path = PathSafety.ensure_imagemagick_input_file!(path)
       ext = File.extname(path).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
-      stdout, = Runner.run!(
-        [
-          command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{path}[0]",
-          "-depth", "8",
-          "-resize", "1x1",
-          "-define", "histogram:unique-colors=true",
-          "-format", "%c",
-          "histogram:info:"
-        ],
-        timeout: timeout
-      )
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      stdout, =
+        Runner.run!(
+          [
+            command,
+            *IMAGEMAGICK_LIMIT_ARGS,
+            "#{decoder}:#{path}[0]",
+            "-depth",
+            "8",
+            "-resize",
+            "1x1",
+            "-define",
+            "histogram:unique-colors=true",
+            "-format",
+            "%c",
+            "histogram:info:"
+          ],
+          timeout: timeout
+        )
 
       # Typical output: `1: (110,116,93) #6F745E srgb(110,116,93)`. Alpha adds
       # two more hex digits; grayscale images report one channel (two digits,
@@ -193,14 +268,26 @@ module SafeImage
       digits = stdout[/#(\h+)/, 1]
       hex =
         case digits&.length
-        when 6, 8 then digits[0, 6]
-        when 2, 4 then digits[0, 2] * 3
+        when 6, 8
+          digits[0, 6]
+        when 2, 4
+          digits[0, 2] * 3
         end
-      raise InvalidImageError, "could not parse dominant color from ImageMagick output: #{stdout.strip.inspect}" if hex.nil?
+      if hex.nil?
+        raise InvalidImageError, "could not parse dominant color from ImageMagick output: #{stdout.strip.inspect}"
+      end
       hex.upcase
     end
 
-    def letter_avatar(output:, size:, background_rgb:, letter:, pointsize:, font: "NimbusSans-Regular", timeout: Runner::DEFAULT_TIMEOUT)
+    def letter_avatar(
+      output:,
+      size:,
+      background_rgb:,
+      letter:,
+      pointsize:,
+      font: "NimbusSans-Regular",
+      timeout: Runner::DEFAULT_TIMEOUT
+    )
       command = convert_command
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
@@ -208,18 +295,29 @@ module SafeImage
       raise ArgumentError, "background_rgb must have three channels" unless rgb.length == 3
       glyph = letter.to_s.each_grapheme_cluster.first.to_s.gsub("%", "%%")
       font_name = font.to_s
-      raise ArgumentError, "unsupported font: #{font_name.inspect}" unless ALLOWED_FONTS.include?(font_name)
+      if ALLOWED_FONTS.none? { |candidate| candidate == font_name }
+        raise ArgumentError, "unsupported font: #{font_name.inspect}"
+      end
 
       argv = [
-        command, *IMAGEMAGICK_LIMIT_ARGS,
-        "-size", "#{Integer(size)}x#{Integer(size)}",
+        command,
+        *IMAGEMAGICK_LIMIT_ARGS,
+        "-size",
+        "#{Integer(size)}x#{Integer(size)}",
         "xc:rgb(#{rgb[0]},#{rgb[1]},#{rgb[2]})",
-        "-pointsize", Integer(pointsize).to_s,
-        "-fill", "#FFFFFFCC",
-        "-font", font_name,
-        "-gravity", "Center",
-        "-annotate", "-0+34", glyph,
-        "-depth", "8",
+        "-pointsize",
+        Integer(pointsize).to_s,
+        "-fill",
+        "#FFFFFFCC",
+        "-font",
+        font_name,
+        "-gravity",
+        "Center",
+        "-annotate",
+        "-0+34",
+        glyph,
+        "-depth",
+        "8",
         output_spec("png", output)
       ]
       run_image_command(argv, output, "generated", "png", timeout)
@@ -231,7 +329,8 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
       output = PathSafety.ensure_imagemagick_safe!(output)
       ext = File.extname(input).delete_prefix(".").downcase
-      decoder = DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
+      decoder =
+        DECODERS.fetch(ext) { raise UnsupportedFormatError, "unsupported ImageMagick input format: #{ext.inspect}" }
       argv = [command, *IMAGEMAGICK_LIMIT_ARGS, "#{decoder}:#{input}[0]", "-auto-orient", output_spec(ext, output)]
       run_image_command(argv, output, ext, ext, timeout)
     end
@@ -241,17 +340,22 @@ module SafeImage
       ext = "jpg" if ext == "jpeg"
       normalized = format.to_s.downcase
       normalized = "jpg" if normalized == "jpeg"
-      raise UnsupportedFormatError, "output extension #{ext.inspect} does not match format #{normalized.inspect}" unless ext == normalized
+      unless ext == normalized
+        raise UnsupportedFormatError, "output extension #{ext.inspect} does not match format #{normalized.inspect}"
+      end
 
-      coder = {
-        "jpg" => "jpeg",
-        "png" => "png",
-        "gif" => "gif",
-        "webp" => "webp",
-        "avif" => "avif",
-        "ico" => "ico",
-        "jxl" => "jxl"
-      }.fetch(normalized) { raise UnsupportedFormatError, "unsupported ImageMagick output format: #{normalized.inspect}" }
+      coder =
+        {
+          "jpg" => "jpeg",
+          "png" => "png",
+          "gif" => "gif",
+          "webp" => "webp",
+          "avif" => "avif",
+          "ico" => "ico",
+          "jxl" => "jxl"
+        }.fetch(normalized) do
+          raise UnsupportedFormatError, "unsupported ImageMagick output format: #{normalized.inspect}"
+        end
       "#{coder}:#{output}"
     end
 
@@ -264,12 +368,10 @@ module SafeImage
 
     def validate_dimensions!(dimensions)
       dimensions = dimensions.to_s
-      patterns = [
-        /\A\d+(?:\.\d+)?%\z/,
-        /\A\d+x\d+[!<>^]?\z/,
-        /\A\d+@\z/
-      ]
-      raise ArgumentError, "unsupported ImageMagick geometry: #{dimensions.inspect}" unless patterns.any? { |pattern| pattern.match?(dimensions) }
+      patterns = [/\A\d+(?:\.\d+)?%\z/, /\A\d+x\d+[!<>^]?\z/, /\A\d+@\z/]
+      unless patterns.any? { |pattern| pattern.match?(dimensions) }
+        raise ArgumentError, "unsupported ImageMagick geometry: #{dimensions.inspect}"
+      end
       dimensions
     end
 

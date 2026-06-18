@@ -29,7 +29,7 @@ module SafeImage
       "fill" => PAINT_FUNCTIONS,
       "stroke" => PAINT_FUNCTIONS,
       "stop-color" => COLOR_FUNCTIONS,
-      "color" => COLOR_FUNCTIONS,  # currentColor resolution; Inkscape/Illustrator
+      "color" => COLOR_FUNCTIONS, # currentColor resolution; Inkscape/Illustrator
       "opacity" => NO_FUNCTIONS,
       "fill-opacity" => NO_FUNCTIONS,
       "stroke-opacity" => NO_FUNCTIONS,
@@ -279,7 +279,7 @@ module SafeImage
     # The scanner is positioned at the "(". url() takes exactly one
     # same-document fragment; every other allowed function takes numbers.
     def scan_function(scanner, name, functions, namespace = nil)
-      return nil unless functions.include?(name)
+      return nil if functions.none? { |candidate| candidate == name }
 
       scanner.skip(/\(\s*/)
       if name == "url"

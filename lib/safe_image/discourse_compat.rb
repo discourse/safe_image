@@ -16,7 +16,16 @@ module SafeImage
       max_pixels = SafeImage.resolved_max_pixels(max_pixels)
       case SafeImage.config.backend
       when :vips
-        vips_resize(from, to, width, height, quality: quality, optimize: optimize, max_pixels: max_pixels, chroma_subsampling: chroma_subsampling)
+        vips_resize(
+          from,
+          to,
+          width,
+          height,
+          quality: quality,
+          optimize: optimize,
+          max_pixels: max_pixels,
+          chroma_subsampling: chroma_subsampling
+        )
       when :imagemagick
         imagemagick_resize(from, to, width, height, quality: quality, optimize: optimize, max_pixels: max_pixels)
       end
@@ -38,14 +47,15 @@ module SafeImage
     def imagemagick_resize(from, to, width, height, quality:, optimize:, max_pixels:)
       probe = compat_probe(from, max_pixels: max_pixels)
       output = PathSafety.ensure_safe_output_path!(to).to_s
-      info = ImageMagickBackend.thumbnail(
-        input: probe.input,
-        output: output,
-        width: width,
-        height: height,
-        format: File.extname(output).delete_prefix(".").downcase,
-        quality: quality
-      )
+      info =
+        ImageMagickBackend.thumbnail(
+          input: probe.input,
+          output: output,
+          width: width,
+          height: height,
+          format: File.extname(output).delete_prefix(".").downcase,
+          quality: quality
+        )
       optimize_output(output, quality) if optimize
       result_from_info(probe.input, output, info, "imagemagick")
     end
@@ -54,7 +64,16 @@ module SafeImage
       max_pixels = SafeImage.resolved_max_pixels(max_pixels)
       case SafeImage.config.backend
       when :vips
-        vips_crop(from, to, width, height, quality: quality, optimize: optimize, max_pixels: max_pixels, chroma_subsampling: chroma_subsampling)
+        vips_crop(
+          from,
+          to,
+          width,
+          height,
+          quality: quality,
+          optimize: optimize,
+          max_pixels: max_pixels,
+          chroma_subsampling: chroma_subsampling
+        )
       when :imagemagick
         imagemagick_crop(from, to, width, height, quality: quality, optimize: optimize, max_pixels: max_pixels)
       end
@@ -81,7 +100,8 @@ module SafeImage
               input: tmp_path,
               output: output,
               quality: quality || JpegliBackend::DEFAULT_QUALITY,
-              chroma_subsampling: JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: probe.input_format),
+              chroma_subsampling:
+                JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: probe.input_format),
               input_format: probe.input_format
             )
           end
@@ -103,15 +123,16 @@ module SafeImage
     def imagemagick_crop(from, to, width, height, quality:, optimize:, max_pixels:)
       probe = compat_probe(from, max_pixels: max_pixels)
       output = PathSafety.ensure_safe_output_path!(to).to_s
-      info = ImageMagickBackend.resize_like(
-        input: probe.input,
-        output: output,
-        width: width,
-        height: height,
-        format: File.extname(output).delete_prefix(".").downcase,
-        quality: quality,
-        crop: :north
-      )
+      info =
+        ImageMagickBackend.resize_like(
+          input: probe.input,
+          output: output,
+          width: width,
+          height: height,
+          format: File.extname(output).delete_prefix(".").downcase,
+          quality: quality,
+          crop: :north
+        )
       optimize_output(output, quality) if optimize
       result_from_info(probe.input, output, info, "imagemagick")
     end
@@ -120,7 +141,15 @@ module SafeImage
       max_pixels = SafeImage.resolved_max_pixels(max_pixels)
       case SafeImage.config.backend
       when :vips
-        vips_downsize(from, to, dimensions, quality: quality, optimize: optimize, max_pixels: max_pixels, chroma_subsampling: chroma_subsampling)
+        vips_downsize(
+          from,
+          to,
+          dimensions,
+          quality: quality,
+          optimize: optimize,
+          max_pixels: max_pixels,
+          chroma_subsampling: chroma_subsampling
+        )
       when :imagemagick
         imagemagick_downsize(from, to, dimensions, optimize: optimize, max_pixels: max_pixels)
       end
@@ -145,7 +174,8 @@ module SafeImage
               input: tmp_path,
               output: output,
               quality: quality,
-              chroma_subsampling: JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: probe.input_format),
+              chroma_subsampling:
+                JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: probe.input_format),
               input_format: probe.input_format
             )
           end
@@ -166,12 +196,13 @@ module SafeImage
     def imagemagick_downsize(from, to, dimensions, optimize:, max_pixels:)
       probe = compat_probe(from, max_pixels: max_pixels)
       output = PathSafety.ensure_safe_output_path!(to).to_s
-      info = ImageMagickBackend.downsize(
-        input: probe.input,
-        output: output,
-        dimensions: dimensions,
-        format: File.extname(output).delete_prefix(".").downcase
-      )
+      info =
+        ImageMagickBackend.downsize(
+          input: probe.input,
+          output: output,
+          dimensions: dimensions,
+          format: File.extname(output).delete_prefix(".").downcase
+        )
       optimize_output(output, nil) if optimize
       result_from_info(probe.input, output, info, "imagemagick")
     end
@@ -181,7 +212,7 @@ module SafeImage
     def optimize_output(output, quality)
       format = File.extname(output).delete_prefix(".").downcase
       format = "jpg" if format == "jpeg"
-      return unless Processor::OPTIMIZABLE_OUTPUTS.include?(format)
+      return if Processor::OPTIMIZABLE_OUTPUTS.none? { |candidate| candidate == format }
       Optimizer.optimize(output, mode: :lossless, strip_metadata: true, quality: quality, assume_upright: true)
     end
 
@@ -195,7 +226,15 @@ module SafeImage
 
       case SafeImage.config.backend
       when :vips
-        native_convert(from, output, format: format, quality: quality, optimize: optimize, max_pixels: max_pixels, chroma_subsampling: chroma_subsampling)
+        native_convert(
+          from,
+          output,
+          format: format,
+          quality: quality,
+          optimize: optimize,
+          max_pixels: max_pixels,
+          chroma_subsampling: chroma_subsampling
+        )
       when :imagemagick
         imagemagick_convert(from, output, format: format, quality: quality, optimize: optimize, max_pixels: max_pixels)
       end
@@ -214,19 +253,21 @@ module SafeImage
       normalized_format = format.to_s.downcase == "jpeg" ? "jpg" : format.to_s.downcase
 
       if use_jpegli_for_convert?(input, normalized_format)
-        info = jpegli_convert_after_native_decode(
-          input: input,
-          output: output,
-          quality: quality || JpegliBackend::DEFAULT_QUALITY,
-          max_pixels: max_pixels,
-          chroma_subsampling: chroma_subsampling
-        )
+        info =
+          jpegli_convert_after_native_decode(
+            input: input,
+            output: output,
+            quality: quality || JpegliBackend::DEFAULT_QUALITY,
+            max_pixels: max_pixels,
+            chroma_subsampling: chroma_subsampling
+          )
         return result_from_info(input, output, info, compat_backend_name(:vips, info))
       end
 
-      info = write_through_tempfile(output) do |tmp_path|
-        Native.convert(input, tmp_path, normalized_format, quality || NATIVE_CONVERT_DEFAULT_QUALITY, max_pixels)
-      end
+      info =
+        write_through_tempfile(output) do |tmp_path|
+          Native.convert(input, tmp_path, normalized_format, quality || NATIVE_CONVERT_DEFAULT_QUALITY, max_pixels)
+        end
       optimize_output(output, normalized_format == "jpg" ? quality : nil) if optimize
       result_from_info(input, output, info, "libvips-direct")
     end
@@ -238,7 +279,8 @@ module SafeImage
           input: tmp_path,
           output: output,
           quality: quality,
-          chroma_subsampling: JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: decoded.fetch(:input_format)),
+          chroma_subsampling:
+            JpegliBackend.validate_chroma_subsampling!(chroma_subsampling, input_format: decoded.fetch(:input_format)),
           input_format: decoded.fetch(:input_format)
         )
       end
@@ -275,7 +317,15 @@ module SafeImage
     end
 
     def convert_to_jpeg(from, to, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)
-      convert(from, to, format: "jpg", quality: quality, optimize: optimize, max_pixels: max_pixels, chroma_subsampling: chroma_subsampling)
+      convert(
+        from,
+        to,
+        format: "jpg",
+        quality: quality,
+        optimize: optimize,
+        max_pixels: max_pixels,
+        chroma_subsampling: chroma_subsampling
+      )
     end
 
     def fix_orientation(from, to = from, max_pixels: nil, quality: nil)
@@ -317,18 +367,29 @@ module SafeImage
 
       quality = quality.nil? ? 95 : Integer(quality)
       raise ArgumentError, "quality must be 1..100" unless (1..100).cover?(quality)
-      info = write_through_tempfile(output) do |tmp_path|
-        Native.resize(input, tmp_path, 1.0, format, quality, max_pixels)
-      end
+      info =
+        write_through_tempfile(output) { |tmp_path| Native.resize(input, tmp_path, 1.0, format, quality, max_pixels) }
       result_from_info(input, output, info, "libvips-direct")
     end
 
     def jpegtran_fix_orientation(input, output, orient)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      info = write_through_tempfile(output) do |tmp_path|
-        Runner.run!(["jpegtran", "-copy", "none", "-perfect", *Optimizer::JPEGTRAN_OPERATIONS.fetch(orient), "-outfile", tmp_path, input])
-        Native.probe(tmp_path)
-      end
+      info =
+        write_through_tempfile(output) do |tmp_path|
+          Runner.run!(
+            [
+              "jpegtran",
+              "-copy",
+              "none",
+              "-perfect",
+              *Optimizer::JPEGTRAN_OPERATIONS.fetch(orient),
+              "-outfile",
+              tmp_path,
+              input
+            ]
+          )
+          Native.probe(tmp_path)
+        end
       result_from_info(
         input,
         output,
@@ -347,7 +408,8 @@ module SafeImage
     # (to == from) never feed an output path that libvips is still reading
     # from as input.
     def write_through_tempfile(output)
-      tmp_path = File.join(File.dirname(output), ".safe-image-#{Process.pid}-#{output.object_id}#{File.extname(output)}")
+      tmp_path =
+        File.join(File.dirname(output), ".safe-image-#{Process.pid}-#{output.object_id}#{File.extname(output)}")
       PathSafety.ensure_safe_output_path!(tmp_path)
       result = yield tmp_path
       FileUtils.mv(tmp_path, output)
@@ -377,7 +439,9 @@ module SafeImage
       max_pixels = SafeImage.resolved_max_pixels(max_pixels)
       # ico directories are counted by the pure-Ruby parser on either backend;
       # everything else is a header-only count.
-      return Ico.frame_count(path, max_pixels: max_pixels) if File.extname(PathSafety.local_path(path)).downcase == ".ico"
+      if File.extname(PathSafety.local_path(path)).downcase == ".ico"
+        return Ico.frame_count(path, max_pixels: max_pixels)
+      end
 
       case SafeImage.config.backend
       when :vips
@@ -393,7 +457,14 @@ module SafeImage
 
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "DejaVu-Sans")
       output = PathSafety.ensure_safe_output_path!(output).to_s
-      request = { output: output, size: size, background_rgb: background_rgb, letter: letter, pointsize: pointsize, font: font }
+      request = {
+        output: output,
+        size: size,
+        background_rgb: background_rgb,
+        letter: letter,
+        pointsize: pointsize,
+        font: font
+      }
 
       info, backend_name =
         case SafeImage.config.backend

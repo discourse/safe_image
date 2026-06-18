@@ -10,7 +10,8 @@ module SafeImage
     DENIAL = /not authorized|security policy|no decode delegate/i
 
     POSTSCRIPT = "%!PS\n/Times-Roman findfont 12 scalefont setfont\n100 700 moveto (x) show\nshowpage\n"
-    PDF = "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+    PDF =
+      "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 
     # ImageMagick reads policy.xml with a hand-rolled tokenizer, not an XML
     # parser: a backtick or apostrophe inside a comment silently drops every
@@ -26,31 +27,24 @@ module SafeImage
 
     def test_denies_postscript_input
       ps = write_tmp("ghostscript.ps", POSTSCRIPT)
-      error = assert_raises(CommandError) do
-        Runner.run!([ImageMagickBackend.convert_command, ps, tmp_path("out.png")])
-      end
+      error = assert_raises(CommandError) { Runner.run!([ImageMagickBackend.convert_command, ps, tmp_path("out.png")]) }
       assert_match DENIAL, error.stderr
     end
 
     def test_denies_pdf_input
       pdf = write_tmp("ghostscript.pdf", PDF)
-      error = assert_raises(CommandError) do
-        Runner.run!([ImageMagickBackend.convert_command, pdf, tmp_path("out.png")])
-      end
+      error =
+        assert_raises(CommandError) { Runner.run!([ImageMagickBackend.convert_command, pdf, tmp_path("out.png")]) }
       assert_match DENIAL, error.stderr
     end
 
     def test_convert_rejects_input_that_does_not_sniff_as_an_image
       txt = write_tmp("not-image.txt", "not an image")
-      assert_raises(UnsupportedFormatError) do
-        SafeImage.convert(txt, tmp_path("sniffed.jpg"), format: "jpg")
-      end
+      assert_raises(UnsupportedFormatError) { SafeImage.convert(txt, tmp_path("sniffed.jpg"), format: "jpg") }
     end
 
     def test_convert_rejects_unsupported_output_format
-      assert_raises(UnsupportedFormatError) do
-        SafeImage.convert(JPG, tmp_path("bad.bmp"), format: "bmp")
-      end
+      assert_raises(UnsupportedFormatError) { SafeImage.convert(JPG, tmp_path("bad.bmp"), format: "bmp") }
     end
   end
 end

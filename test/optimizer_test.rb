@@ -100,13 +100,10 @@ module SafeImage
     # Hand-built 64x64 4-bit grayscale PNG (16 shades) — a shape pngquant's
     # palette output cannot shrink, so --skip-if-larger fires (exit 98).
     def gray4_png(name)
-      rows = (0...64).map do |y|
-        "\0".b + (0...32).map { |x| ((x % 16) << 4) | ((x + y) % 16) }.pack("C*")
-      end.join
-      png = "\x89PNG\r\n\x1a\n".b +
-        png_chunk("IHDR", [64, 64, 4, 0, 0, 0, 0].pack("NNCCCCC")) +
-        png_chunk("IDAT", Zlib::Deflate.deflate(rows)) +
-        png_chunk("IEND", "")
+      rows = (0...64).map { |y| "\0".b + (0...32).map { |x| ((x % 16) << 4) | ((x + y) % 16) }.pack("C*") }.join
+      png =
+        "\x89PNG\r\n\x1a\n".b + png_chunk("IHDR", [64, 64, 4, 0, 0, 0, 0].pack("NNCCCCC")) +
+          png_chunk("IDAT", Zlib::Deflate.deflate(rows)) + png_chunk("IEND", "")
       write_tmp(name, png)
     end
 

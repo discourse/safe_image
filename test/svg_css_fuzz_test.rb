@@ -18,12 +18,52 @@ module SafeImage
     # everything here is (correctly) rejected; this stresses the reject path
     # and the never-crash property.
     POISON = [
-      ":", ";", ",", "(", ")", "{", "}", ">", "*", "/", "//", "/*", "*/",
-      "\\", "\\6c", "\\4c ", "\\0075 ", "'", '"', "@", "@import", "@media", "@font-face",
-      "javascript:", "data:", "http://", "expression", "url(", "URL(", "image-set(",
-      "var(", "--x", "behavior", "src", "//evil.example", "http://evil.example/x",
-      "!", "!important", " / ", "/ .5", "/*", "*/", # priority + color-alpha + comment surface
-      "‮", "ｕ", "ﬁ", " " # non-ASCII smuggling (RTL override, fullwidth u, fi ligature, NBSP)
+      ":",
+      ";",
+      ",",
+      "(",
+      ")",
+      "{",
+      "}",
+      ">",
+      "*",
+      "/",
+      "//",
+      "/*",
+      "*/",
+      "\\",
+      "\\6c",
+      "\\4c ",
+      "\\0075 ",
+      "'",
+      '"',
+      "@",
+      "@import",
+      "@media",
+      "@font-face",
+      "javascript:",
+      "data:",
+      "http://",
+      "expression",
+      "url(",
+      "URL(",
+      "image-set(",
+      "var(",
+      "--x",
+      "behavior",
+      "src",
+      "//evil.example",
+      "http://evil.example/x",
+      "!",
+      "!important",
+      " / ",
+      "/ .5",
+      "/*",
+      "*/", # priority + color-alpha + comment surface
+      "‮",
+      "ｕ",
+      "ﬁ",
+      " " # non-ASCII smuggling (RTL override, fullwidth u, fi ligature, NBSP)
     ].freeze
 
     # Structured stream: well-formed declarations from a benign vocabulary,
@@ -32,9 +72,28 @@ module SafeImage
     # those only run on surviving (non-nil) output.
     PROPERTIES = (SvgCss::ALLOWED_PROPERTIES.keys + %w[cursor background unknown-prop]).freeze
     VALUE_TOKENS = %w[
-      red none evenodd #grad #abc #ff0000 1 1.5 .5 0 12px 45deg 100%
-      rgb(255,0,0) matrix(1,0,0,1,2,3) translate(3,4) rotate(45deg) url(#g)
-      DejaVu sans-serif bold !important
+      red
+      none
+      evenodd
+      #grad
+      #abc
+      #ff0000
+      1
+      1.5
+      .5
+      0
+      12px
+      45deg
+      100%
+      rgb(255,0,0)
+      matrix(1,0,0,1,2,3)
+      translate(3,4)
+      rotate(45deg)
+      url(#g)
+      DejaVu
+      sans-serif
+      bold
+      !important
     ].freeze
     # Kept separate: contains spaces, so it can't live in a %w[] list.
     COLOR_ALPHA_TOKEN = "rgb(0 0 0 / 0.5)"
@@ -83,14 +142,18 @@ module SafeImage
           next if out.nil?
 
           context = "sanitize_stylesheet(#{rule.inspect}, namespace: #{ns}) => #{out.inspect}"
-          out.scan(/([^{}]+)\{/).each do |selectors,|
-            selectors.split(",").each do |selector|
-              assert_match(/\A\.#{ns}-scope[ >]/, selector.strip, "selector escaped the scope: #{context}")
+          out
+            .scan(/([^{}]+)\{/)
+            .each do |selectors,|
+              selectors
+                .split(",")
+                .each do |selector|
+                  assert_match(/\A\.#{ns}-scope[ >]/, selector.strip, "selector escaped the scope: #{context}")
+                end
             end
-          end
-          out.scan(/url\(#([^)]*)\)/).each do |fragment,|
-            assert_match(/\A#{ns}-/, fragment, "url() fragment not namespaced: #{context}")
-          end
+          out
+            .scan(/url\(#([^)]*)\)/)
+            .each { |fragment,| assert_match(/\A#{ns}-/, fragment, "url() fragment not namespaced: #{context}") }
           assert_equal out, SvgCss.sanitize_stylesheet(out, namespace: ns), "not idempotent: #{context}"
         end
       end
@@ -127,21 +190,38 @@ module SafeImage
     # it is the namespaced fragment form. Catches the quoted/uppercase/malformed
     # bypasses where dangerous_value? and the rewrite could disagree.
     URL_FUZZ = [
-      "url(", "URL(", "Url(", "url (", "#g", "#u1-g", "u1-g", "'", '"', ")", " ",
-      "http://evil.example/x", "//evil.example", "#", "data:x", "javascript:x", "fill"
+      "url(",
+      "URL(",
+      "Url(",
+      "url (",
+      "#g",
+      "#u1-g",
+      "u1-g",
+      "'",
+      '"',
+      ")",
+      " ",
+      "http://evil.example/x",
+      "//evil.example",
+      "#",
+      "data:x",
+      "javascript:x",
+      "fill"
     ].freeze
 
     def test_namespaced_presentation_attribute_urls_never_leave_bare_refs
       SEEDS.each do |seed|
         rng = Random.new(seed)
         40.times do
-          rects = Array.new(25) do
-            value = Array.new(rng.rand(1..6)) { URL_FUZZ[rng.rand(URL_FUZZ.length)] }.join
-            attr = %w[fill stroke clip-path marker-end mask][rng.rand(5)]
-            %(<rect #{attr}="#{xml_escape(value)}"/>)
-          end
-          svg = %(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">) +
-                %(<defs><linearGradient id="g"/></defs>#{rects.join}</svg>)
+          rects =
+            Array.new(25) do
+              value = Array.new(rng.rand(1..6)) { URL_FUZZ[rng.rand(URL_FUZZ.length)] }.join
+              attr = %w[fill stroke clip-path marker-end mask][rng.rand(5)]
+              %(<rect #{attr}="#{xml_escape(value)}"/>)
+            end
+          svg =
+            %(<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">) +
+              %(<defs><linearGradient id="g"/></defs>#{rects.join}</svg>)
           path = write_tmp("urlfuzz-#{seed}.svg", svg)
           SafeImage.sanitize_svg!(path, id_namespace: "u1")
           out = File.read(path)
@@ -174,27 +254,33 @@ module SafeImage
           kept += 1 if yield(rng)
         end
       end
-      assert_operator kept.to_f / total, :>=, MIN_SURVIVAL_RATE,
+      assert_operator kept.to_f / total,
+                      :>=,
+                      MIN_SURVIVAL_RATE,
                       "generator no longer exercises the kept path (#{kept}/#{total} survived)"
     end
 
     # 1-4 declarations of "prop: value [sep value]*", with a poison token
     # spliced in ~30% of the time.
     def generate_declarations(rng)
-      Array.new(rng.rand(1..4)) do
-        property = PROPERTIES[rng.rand(PROPERTIES.length)]
-        values = Array.new(rng.rand(1..3)) { VALUE_TOKENS[rng.rand(VALUE_TOKENS.length)] }
-        values << COLOR_ALPHA_TOKEN if rng.rand < 0.15
-        values << POISON[rng.rand(POISON.length)] if rng.rand < 0.3
-        "#{property}:#{values.join(SEPARATORS[rng.rand(SEPARATORS.length)])}"
-      end.join(";")
+      Array
+        .new(rng.rand(1..4)) do
+          property = PROPERTIES[rng.rand(PROPERTIES.length)]
+          values = Array.new(rng.rand(1..3)) { VALUE_TOKENS[rng.rand(VALUE_TOKENS.length)] }
+          values << COLOR_ALPHA_TOKEN if rng.rand < 0.15
+          values << POISON[rng.rand(POISON.length)] if rng.rand < 0.3
+          "#{property}:#{values.join(SEPARATORS[rng.rand(SEPARATORS.length)])}"
+        end
+        .join(";")
     end
 
     def generate_selectors(rng)
-      Array.new(rng.rand(1..3)) do
-        compound = %w[rect g .st0 .a #id text *][rng.rand(7)]
-        rng.rand < 0.2 ? "#{compound} > .#{rng.rand(99)}" : compound
-      end.join(rng.rand < 0.3 ? " " : ", ")
+      Array
+        .new(rng.rand(1..3)) do
+          compound = %w[rect g .st0 .a #id text *][rng.rand(7)]
+          rng.rand < 0.2 ? "#{compound} > .#{rng.rand(99)}" : compound
+        end
+        .join(rng.rand < 0.3 ? " " : ", ")
     end
 
     def generate_garbage(rng)
@@ -227,9 +313,10 @@ module SafeImage
       refute_includes cleaned, "evil.example", "external host reached file output for #{css.inspect}"
       refute_match(/@import/i, cleaned, "@import reached file output for #{css.inspect}")
       # Any url() in a style attribute/element must be a fragment.
-      cleaned.scan(/style='([^']*)'/i).flatten.each do |style|
-        refute_match(/url\((?!#)/i, style, "non-fragment url() in style for #{css.inspect}")
-      end
+      cleaned
+        .scan(/style='([^']*)'/i)
+        .flatten
+        .each { |style| refute_match(/url\((?!#)/i, style, "non-fragment url() in style for #{css.inspect}") }
     end
   end
 end

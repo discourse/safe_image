@@ -13,38 +13,122 @@ module SafeImage
     XHTML_XMLNS = "http://www.w3.org/1999/xhtml"
 
     SEEDS = ENV.fetch("SAFE_IMAGE_FUZZ_SEEDS", "7,101,2025,65537").split(",").map { |seed| Integer(seed) }.freeze
-    DOCUMENTS_PER_SEED = Integer(ENV.fetch("SAFE_IMAGE_SVG_FUZZ_DOCUMENTS", ENV.fetch("SAFE_IMAGE_FUZZ_DOCUMENTS", "75")))
+    DOCUMENTS_PER_SEED =
+      Integer(ENV.fetch("SAFE_IMAGE_SVG_FUZZ_DOCUMENTS", ENV.fetch("SAFE_IMAGE_FUZZ_DOCUMENTS", "75")))
     MAX_DEPTH = 3
 
     ELEMENTS = %w[
-      svg g defs rect circle line path text tspan textPath linearGradient stop clipPath mask marker use style
-      script foreignObject image a metadata bad tref
-      s:g s:rect v:line s:text s:textPath s:style s:script evil:rect evil:textPath html:script
+      svg
+      g
+      defs
+      rect
+      circle
+      line
+      path
+      text
+      tspan
+      textPath
+      linearGradient
+      stop
+      clipPath
+      mask
+      marker
+      use
+      style
+      script
+      foreignObject
+      image
+      a
+      metadata
+      bad
+      tref
+      s:g
+      s:rect
+      v:line
+      s:text
+      s:textPath
+      s:style
+      s:script
+      evil:rect
+      evil:textPath
+      html:script
     ].freeze
 
     ATTRIBUTES = %w[
-      id class x y x1 y1 x2 y2 width height r d points fill stroke clip-path marker marker-mid marker-end mask href xlink:href
-      aria-labelledby aria-describedby style transform opacity onload onclick y:onload html:onload data-name xml:space src
+      id
+      class
+      x
+      y
+      x1
+      y1
+      x2
+      y2
+      width
+      height
+      r
+      d
+      points
+      fill
+      stroke
+      clip-path
+      marker
+      marker-mid
+      marker-end
+      mask
+      href
+      xlink:href
+      aria-labelledby
+      aria-describedby
+      style
+      transform
+      opacity
+      onload
+      onclick
+      y:onload
+      html:onload
+      data-name
+      xml:space
+      src
     ].freeze
 
     # Dense geometry so the marker-per-vertex render-cost accounting (and the
     # vertex counter) is exercised, not just single-shape paths. Kept modest so
     # a marker reference multiplies it without certainly tripping the cap, so
     # both the kept and rejected branches of the bound get fuzzed.
-    DENSE_GEOMETRY = [
-      "M0,0 #{'L9,9 ' * 64}",
-      "M0,0 #{'L9,9 ' * 512}",
-      ("1,1 " * 64).strip,
-      ("2,2 " * 512).strip
-    ].freeze
+    DENSE_GEOMETRY = ["M0,0 #{"L9,9 " * 64}", "M0,0 #{"L9,9 " * 512}", ("1,1 " * 64).strip, ("2,2 " * 512).strip].freeze
 
     VALUES = [
-      "g", "safe", "10", "0", "1", "#g", "url(#g)", "URL(#g)", "url('#g')", "none", "red", "#ff0000",
-      "translate(1 2)", "fill:url(#g);stroke:#000", "fill:url(http://evil.example/x);stroke:#000",
-      "fill:var(--host);stroke:#000", "javascript:alert(1)", "data:image/svg+xml,<svg>",
-      "http://evil.example/x", "https://evil.example/x", "//evil.example/x", "url(http://evil.example/x)",
-      "url(//evil.example/x)", "url(/absolute)", "url(#)", "ur\\6c(http://evil.example/x)",
-      "var(--x)", "env(safe-area-inset-top)", "attr(data-x)", "modal fixed", "title desc"
+      "g",
+      "safe",
+      "10",
+      "0",
+      "1",
+      "#g",
+      "url(#g)",
+      "URL(#g)",
+      "url('#g')",
+      "none",
+      "red",
+      "#ff0000",
+      "translate(1 2)",
+      "fill:url(#g);stroke:#000",
+      "fill:url(http://evil.example/x);stroke:#000",
+      "fill:var(--host);stroke:#000",
+      "javascript:alert(1)",
+      "data:image/svg+xml,<svg>",
+      "http://evil.example/x",
+      "https://evil.example/x",
+      "//evil.example/x",
+      "url(http://evil.example/x)",
+      "url(//evil.example/x)",
+      "url(/absolute)",
+      "url(#)",
+      "ur\\6c(http://evil.example/x)",
+      "var(--x)",
+      "env(safe-area-inset-top)",
+      "attr(data-x)",
+      "modal fixed",
+      "title desc"
     ].freeze
 
     def test_generated_svg_documents_hold_sanitizer_invariants
@@ -89,7 +173,9 @@ module SafeImage
       name = ELEMENTS[rng.rand(ELEMENTS.length)]
       attrs = generated_attributes(rng)
       if name.end_with?("style")
-        return "<#{name}#{attrs}>#{xml_text(VALUES.sample(random: rng))}{fill:url(http://evil.example/x)} .ok{fill:url(#g)}</#{name}>"
+        style =
+          "<#{name}#{attrs}>#{xml_text(VALUES.sample(random: rng))}{fill:url(http://evil.example/x)} .ok{fill:url(#g)}</#{name}>"
+        return style
       end
 
       if depth >= MAX_DEPTH || rng.rand < 0.45
@@ -101,10 +187,13 @@ module SafeImage
     end
 
     def generated_attributes(rng)
-      ATTRIBUTES.sample(rng.rand(2..7), random: rng).map do |name|
-        value = value_for_attribute(name, rng)
-        %( #{name}="#{xml_attr(value)}")
-      end.join
+      ATTRIBUTES
+        .sample(rng.rand(2..7), random: rng)
+        .map do |name|
+          value = value_for_attribute(name, rng)
+          %( #{name}="#{xml_attr(value)}")
+        end
+        .join
     end
 
     def value_for_attribute(name, rng)
@@ -114,10 +203,11 @@ module SafeImage
       when "class"
         ["modal fixed", "ok", "host btn-danger"].sample(random: rng)
       when "href", "xlink:href"
-        ["#g", "#safe", "javascript:alert(1)", "data:image/gif,GIF89a", "defs.svg#icon", "/abs", "//evil.example/x"].sample(random: rng)
+        %w[#g #safe javascript:alert(1) data:image/gif,GIF89a defs.svg#icon /abs //evil.example/x].sample(random: rng)
       when "d", "points"
         DENSE_GEOMETRY.sample(random: rng)
-      when "marker", "marker-mid", "fill", "stroke", "clip-path", "marker-end", "mask", "style", "onload", "onclick", "y:onload", "html:onload"
+      when "marker", "marker-mid", "fill", "stroke", "clip-path", "marker-end", "mask", "style", "onload", "onclick",
+           "y:onload", "html:onload"
         VALUES.sample(random: rng)
       when "aria-labelledby", "aria-describedby"
         ["title desc", "host", "g c"].sample(random: rng)
@@ -146,7 +236,8 @@ module SafeImage
     end
 
     def assert_allowed_element(element, input)
-      assert_includes SvgSanitizer::ALLOWED_ELEMENTS, element.name.to_s,
+      assert_includes SvgSanitizer::ALLOWED_ELEMENTS,
+                      element.name.to_s,
                       "unexpected element #{element.expanded_name.inspect} survived from #{input.inspect}"
       namespace = element.namespace.to_s
       assert namespace.empty? || namespace == SVG_XMLNS,
@@ -155,7 +246,8 @@ module SafeImage
 
     def assert_allowed_attribute(attr, input)
       if namespace_declaration?(attr)
-        assert_includes [SVG_XMLNS, XLINK_XMLNS], attr.value.to_s,
+        assert_includes [SVG_XMLNS, XLINK_XMLNS],
+                        attr.value.to_s,
                         "unsafe namespace declaration #{attr.expanded_name}=#{attr.value.inspect} survived from #{input.inspect}"
         return
       end
@@ -165,30 +257,41 @@ module SafeImage
       name = attr.expanded_name.to_s
       assert SvgSanitizer::ALLOWED_ATTRIBUTES.include?(name) || name.start_with?("aria-"),
              "non-allowlisted attr #{name.inspect} survived from #{input.inspect}"
-      refute attr.name.to_s.downcase.start_with?("on"), "event attr #{attr.expanded_name.inspect} survived from #{input.inspect}"
+      refute attr.name.to_s.downcase.start_with?("on"),
+             "event attr #{attr.expanded_name.inspect} survived from #{input.inspect}"
     end
 
     def assert_safe_attribute_value(attr, namespace, input)
       value = attr.value.to_s
       refute_match(/(?:javascript|data):/i, value, "active URL survived in #{attr.expanded_name}: #{input.inspect}")
       refute_includes value, "\\", "CSS/XML escape survived in #{attr.expanded_name}: #{input.inspect}"
-      refute_match(/(?:var|env|attr)\s*\(/i, value, "host-reaching CSS function survived in #{attr.expanded_name}: #{input.inspect}")
+      refute_match(
+        /(?:var|env|attr)\s*\(/i,
+        value,
+        "host-reaching CSS function survived in #{attr.expanded_name}: #{input.inspect}"
+      )
       assert_safe_url_functions(value, namespace, input)
       assert_safe_href(attr, namespace, input) if href_attribute?(attr)
     end
 
     def assert_safe_url_functions(value, namespace, input)
-      value.scan(/url\(([^)]*)\)/i).each do |inside,|
-        fragment = inside.strip.delete_prefix("'").delete_prefix('"').delete_suffix("'").delete_suffix('"')
-        assert_match(/\A#[A-Za-z][\w.-]*\z/, fragment, "non-fragment url() survived from #{input.inspect}")
-        assert fragment.start_with?("##{namespace}-"), "bare url() fragment survived from #{input.inspect}" if namespace != :standalone
-      end
+      value
+        .scan(/url\(([^)]*)\)/i)
+        .each do |inside,|
+          fragment = inside.strip.delete_prefix("'").delete_prefix('"').delete_suffix("'").delete_suffix('"')
+          assert_match(/\A#[A-Za-z][\w.-]*\z/, fragment, "non-fragment url() survived from #{input.inspect}")
+          if namespace != :standalone
+            assert fragment.start_with?("##{namespace}-"), "bare url() fragment survived from #{input.inspect}"
+          end
+        end
     end
 
     def assert_safe_href(attr, namespace, input)
       value = attr.value.to_s
       assert value.start_with?("#"), "non-fragment href survived from #{input.inspect}"
-      assert value.start_with?("##{namespace}-"), "bare href fragment survived from #{input.inspect}" if namespace != :standalone
+      if namespace != :standalone
+        assert value.start_with?("##{namespace}-"), "bare href fragment survived from #{input.inspect}"
+      end
     end
 
     def assert_namespaced_identity_attrs(element, namespace, input)
@@ -215,8 +318,11 @@ module SafeImage
     end
 
     def assert_no_active_or_fetching_surface(cleaned, input)
-      refute_match(/<\/?(?:script|foreignObject|image|a|metadata|bad)\b/i, cleaned,
-                   "active/disallowed element survived from #{input.inspect}")
+      refute_match(
+        %r{</?(?:script|foreignObject|image|a|metadata|bad)\b}i,
+        cleaned,
+        "active/disallowed element survived from #{input.inspect}"
+      )
       refute_match(/\s[\w.-]*:?on\w+\s*=/i, cleaned, "event attribute survived from #{input.inspect}")
     end
 

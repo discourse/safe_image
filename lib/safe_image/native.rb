@@ -53,13 +53,13 @@ module SafeImage
           image, input_format = load_image(track, input, autorotate: true)
           check_pixels!(image, max_pixels)
 
-          thumb = track.call(
-            VipsGlue.operation(
-              "thumbnail_image",
-              { in: image, width: width, height: height,
-                size: "both", crop: "centre", fail_on: "error" }
+          thumb =
+            track.call(
+              VipsGlue.operation(
+                "thumbnail_image",
+                { in: image, width: width, height: height, size: "both", crop: "centre", fail_on: "error" }
+              )
             )
-          )
           save_image(thumb, output, out_format, quality)
           info(input_format, out_format, thumb, started)
         end
@@ -102,9 +102,10 @@ module SafeImage
           scale = [width.fdiv(VipsGlue.width(rotated)), height.fdiv(VipsGlue.height(rotated))].max * 1.0000001
           resized = track.call(VipsGlue.operation("resize", { in: rotated, scale: scale }))
           left = [(VipsGlue.width(resized) - width) / 2, 0].max
-          cropped = track.call(
-            VipsGlue.operation("extract_area", { input: resized, left: left, top: 0, width: width, height: height })
-          )
+          cropped =
+            track.call(
+              VipsGlue.operation("extract_area", { input: resized, left: left, top: 0, width: width, height: height })
+            )
           save_image(cropped, String(output), out_format, quality)
           info(input_format, out_format, cropped, started)
         end
@@ -240,13 +241,19 @@ module SafeImage
               if text_w > size || text_h > size
                 crop_w = [text_w, size].min
                 crop_h = [text_h, size].min
-                text = track.call(
-                  VipsGlue.operation(
-                    "extract_area",
-                    { input: text, left: (text_w - crop_w) / 2, top: (text_h - crop_h) / 2,
-                      width: crop_w, height: crop_h }
+                text =
+                  track.call(
+                    VipsGlue.operation(
+                      "extract_area",
+                      {
+                        input: text,
+                        left: (text_w - crop_w) / 2,
+                        top: (text_h - crop_h) / 2,
+                        width: crop_w,
+                        height: crop_h
+                      }
+                    )
                   )
-                )
                 text_w = crop_w
                 text_h = crop_h
               end
@@ -287,13 +294,20 @@ module SafeImage
 
       def normalized_format(ext)
         case ext.to_s.downcase
-        when "jpg", "jpeg" then "jpg"
-        when "png" then "png"
-        when "webp" then "webp"
-        when "gif" then "gif"
-        when "heic", "heif" then "heic"
-        when "avif" then "avif"
-        when "jxl" then "jxl"
+        when "jpg", "jpeg"
+          "jpg"
+        when "png"
+          "png"
+        when "webp"
+          "webp"
+        when "gif"
+          "gif"
+        when "heic", "heif"
+          "heic"
+        when "avif"
+          "avif"
+        when "jxl"
+          "jxl"
         end
       end
 
@@ -358,17 +372,27 @@ module SafeImage
       def save_image(image, path, format, quality)
         case format
         when "jpg"
-          VipsGlue.operation("jpegsave", { in: image, filename: path, Q: quality, interlace: false, **strip_args }, output: nil)
+          VipsGlue.operation(
+            "jpegsave",
+            { in: image, filename: path, Q: quality, interlace: false, **strip_args },
+            output: nil
+          )
         when "png"
           VipsGlue.operation("pngsave", { in: image, filename: path, compression: 6, **strip_args }, output: nil)
         when "webp"
           VipsGlue.operation("webpsave", { in: image, filename: path, Q: quality, **strip_args }, output: nil)
         when "avif"
-          VipsGlue.operation("heifsave", { in: image, filename: path, Q: quality, compression: "av1", **strip_args }, output: nil)
+          VipsGlue.operation(
+            "heifsave",
+            { in: image, filename: path, Q: quality, compression: "av1", **strip_args },
+            output: nil
+          )
         when "gif"
           # cgif-backed saver; optional at libvips build time. GIF output is
           # palette-quantised and has no quality parameter.
-          raise UnsupportedFormatError, "this libvips build cannot save GIF (cgif support missing)" unless VipsGlue.type_find?("gifsave")
+          unless VipsGlue.type_find?("gifsave")
+            raise UnsupportedFormatError, "this libvips build cannot save GIF (cgif support missing)"
+          end
           VipsGlue.operation("gifsave", { in: image, filename: path, **strip_args }, output: nil)
         when "jxl"
           raise UnsupportedFormatError, "this libvips build cannot save JPEG XL" unless VipsGlue.type_find?("jxlsave")

@@ -80,7 +80,11 @@ module SafeImage
       SVG
 
       assert_includes out, "<rect", "safe sibling was dropped"
-      refute_match(/foreignObject|html:|math|mtext|<script|onerror/i, out, "foreign-content/mXSS shape survived as markup")
+      refute_match(
+        /foreignObject|html:|math|mtext|<script|onerror/i,
+        out,
+        "foreign-content/mXSS shape survived as markup"
+      )
       assert_includes out, "&lt;script&gt;", "CDATA text was not escaped as text"
     end
 
@@ -111,8 +115,11 @@ module SafeImage
       SVG
 
       assert_includes out, 'fill="url(#safe)"', "safe fragment paint server was lost"
-      refute_match(/<xi:include\b|file:|<filter\b|<feImage\b|<image\b|169\.254|evil\.example/i, out,
-                   "XInclude/renderer external resource survived")
+      refute_match(
+        /<xi:include\b|file:|<filter\b|<feImage\b|<image\b|169\.254|evil\.example/i,
+        out,
+        "XInclude/renderer external resource survived"
+      )
       assert_no_active_or_fetching_attribute_values(out)
     end
 
@@ -125,8 +132,11 @@ module SafeImage
         </svg>
       SVG
 
-      refute_match(/<image\b|mvg|msl:|label:|ephemeral:|etc\/passwd/i, out,
-                   "ImageMagick pseudo-protocol/resource reference survived")
+      refute_match(
+        %r{<image\b|mvg|msl:|label:|ephemeral:|etc/passwd}i,
+        out,
+        "ImageMagick pseudo-protocol/resource reference survived"
+      )
       assert_no_active_or_fetching_attribute_values(out)
     end
 
@@ -136,9 +146,7 @@ module SafeImage
     # expanded render tree and reject.
     def test_use_reference_expansion_bomb_is_rejected
       levels = 30
-      defs = (1..levels).map do |i|
-        %(<g id="l#{i}"><use href="#l#{i - 1}"/><use href="#l#{i - 1}"/></g>)
-      end.join
+      defs = (1..levels).map { |i| %(<g id="l#{i}"><use href="#l#{i - 1}"/><use href="#l#{i - 1}"/></g>) }.join
       bomb = write_tmp("use-bomb.svg", <<~SVG)
         <svg xmlns="#{SVG_XMLNS}" width="10" height="10">
           <defs><g id="l0"><rect width="1" height="1"/></g>#{defs}</defs>
@@ -172,7 +180,7 @@ module SafeImage
       styled = write_tmp("marker-style-bomb.svg", <<~SVG)
         <svg xmlns="#{SVG_XMLNS}" width="100" height="100">
           <defs>#{marker}</defs>
-          <path style="marker-mid:url(#m)" d="M0,0 #{'L9,9 ' * 180_000}"/>
+          <path style="marker-mid:url(#m)" d="M0,0 #{"L9,9 " * 180_000}"/>
         </svg>
       SVG
       assert_raises(LimitError) { SafeImage.sanitize_svg!(styled, id_namespace: "u1") }
@@ -180,7 +188,7 @@ module SafeImage
       points = write_tmp("marker-points-bomb.svg", <<~SVG)
         <svg xmlns="#{SVG_XMLNS}" width="100" height="100">
           <defs>#{marker}</defs>
-          <polyline marker-mid="url(#m)" points="#{'1,1 ' * 100_000}"/>
+          <polyline marker-mid="url(#m)" points="#{"1,1 " * 100_000}"/>
         </svg>
       SVG
       assert_raises(LimitError) { SafeImage.sanitize_svg!(points, id_namespace: "u1") }
@@ -222,10 +230,10 @@ module SafeImage
           <defs>
             <marker id="inner" markerWidth="2" markerHeight="2"><circle r="1"/></marker>
             <marker id="outer" markerWidth="2" markerHeight="2">
-              <path marker-mid="url(#inner)" d="M0,0 #{'L9,9 ' * 2000}"/>
+              <path marker-mid="url(#inner)" d="M0,0 #{"L9,9 " * 2000}"/>
             </marker>
           </defs>
-          <path marker-mid="url(#outer)" d="M0,0 #{'L9,9 ' * 2000}"/>
+          <path marker-mid="url(#outer)" d="M0,0 #{"L9,9 " * 2000}"/>
         </svg>
       SVG
       assert_raises(LimitError) { SafeImage.sanitize_svg!(composed, id_namespace: "u1") }
@@ -246,7 +254,7 @@ module SafeImage
 
       dense = write_tmp("dense-path.svg", <<~SVG)
         <svg xmlns="#{SVG_XMLNS}" width="100" height="100">
-          <path fill="none" stroke="#000" d="M0,0 #{'L9,9 ' * 150_000}"/>
+          <path fill="none" stroke="#000" d="M0,0 #{"L9,9 " * 150_000}"/>
         </svg>
       SVG
       assert SafeImage.sanitize_svg!(dense, id_namespace: "u1"), "dense marker-free path was wrongly rejected"
@@ -307,8 +315,11 @@ module SafeImage
         element.attributes.each_attribute do |attr|
           next if attr.expanded_name == "xmlns" || attr.prefix.to_s == "xmlns"
 
-          refute_match(/(?:https?|ftp|file|data|javascript|msl|label|ephemeral):/i, attr.value.to_s,
-                       "fetching/active protocol survived in #{attr.expanded_name}=#{attr.value.inspect}")
+          refute_match(
+            /(?:https?|ftp|file|data|javascript|msl|label|ephemeral):/i,
+            attr.value.to_s,
+            "fetching/active protocol survived in #{attr.expanded_name}=#{attr.value.inspect}"
+          )
         end
       end
     end

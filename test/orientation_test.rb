@@ -19,7 +19,10 @@ module SafeImage
       assert_equal 1, SafeImage.orientation(JPG)
       assert_equal 1, SafeImage.orientation(PNG)
       assert_equal 1, SafeImage.orientation(ICO)
-      assert_equal 1, SafeImage.orientation(write_tmp("icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'))
+      assert_equal 1,
+                   SafeImage.orientation(
+                     write_tmp("icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>')
+                   )
     end
 
     def test_fix_orientation_uses_jpegtran_for_mcu_aligned_jpegs

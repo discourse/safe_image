@@ -20,8 +20,30 @@ module SafeImage
   # unreachable (a DOCTYPE is rejected before parsing).
   module SvgSanitizer
     ALLOWED_ELEMENTS = %w[
-      svg g defs title desc path rect circle ellipse line polyline polygon text tspan textPath
-      linearGradient radialGradient stop clipPath mask pattern use symbol style
+      svg
+      g
+      defs
+      title
+      desc
+      path
+      rect
+      circle
+      ellipse
+      line
+      polyline
+      polygon
+      text
+      tspan
+      textPath
+      linearGradient
+      radialGradient
+      stop
+      clipPath
+      mask
+      pattern
+      use
+      symbol
+      style
       marker
     ].freeze
 
@@ -31,20 +53,87 @@ module SafeImage
     # Attribute values that may carry url() (fill, stroke, clip-path, mask,
     # marker*) are constrained to #fragment references by dangerous_value?.
     ALLOWED_ATTRIBUTES = %w[
-      id class x y x1 y1 x2 y2 cx cy r rx ry d points width height viewBox
-      fill stroke stroke-width stroke-linecap stroke-linejoin stroke-miterlimit
-      fill-rule clip-rule opacity fill-opacity stroke-opacity transform
-      gradientUnits gradientTransform offset stop-color stop-opacity clip-path
-      mask href xlink:href xmlns xmlns:xlink version preserveAspectRatio
-      font-family font-size font-weight text-anchor style
-      color stroke-dasharray stroke-dashoffset vector-effect
-      marker marker-start marker-mid marker-end
-      markerWidth markerHeight refX refY orient markerUnits
-      display visibility overflow paint-order mix-blend-mode isolation
-      shape-rendering image-rendering color-interpolation
-      font-style font-variant font-stretch text-decoration
-      letter-spacing word-spacing dominant-baseline baseline-shift
-      writing-mode direction
+      id
+      class
+      x
+      y
+      x1
+      y1
+      x2
+      y2
+      cx
+      cy
+      r
+      rx
+      ry
+      d
+      points
+      width
+      height
+      viewBox
+      fill
+      stroke
+      stroke-width
+      stroke-linecap
+      stroke-linejoin
+      stroke-miterlimit
+      fill-rule
+      clip-rule
+      opacity
+      fill-opacity
+      stroke-opacity
+      transform
+      gradientUnits
+      gradientTransform
+      offset
+      stop-color
+      stop-opacity
+      clip-path
+      mask
+      href
+      xlink:href
+      xmlns
+      xmlns:xlink
+      version
+      preserveAspectRatio
+      font-family
+      font-size
+      font-weight
+      text-anchor
+      style
+      color
+      stroke-dasharray
+      stroke-dashoffset
+      vector-effect
+      marker
+      marker-start
+      marker-mid
+      marker-end
+      markerWidth
+      markerHeight
+      refX
+      refY
+      orient
+      markerUnits
+      display
+      visibility
+      overflow
+      paint-order
+      mix-blend-mode
+      isolation
+      shape-rendering
+      image-rendering
+      color-interpolation
+      font-style
+      font-variant
+      font-stretch
+      text-decoration
+      letter-spacing
+      word-spacing
+      dominant-baseline
+      baseline-shift
+      writing-mode
+      direction
     ].freeze
 
     SVG_NAMESPACE = "http://www.w3.org/2000/svg"
@@ -66,8 +155,14 @@ module SafeImage
     # They are references like href/url(#…) and must move into the namespace too,
     # or they bind to a host element (or dangle) when the SVG is inlined.
     ARIA_IDREF_ATTRIBUTES = %w[
-      aria-activedescendant aria-controls aria-describedby aria-details
-      aria-errormessage aria-flowto aria-labelledby aria-owns
+      aria-activedescendant
+      aria-controls
+      aria-describedby
+      aria-details
+      aria-errormessage
+      aria-flowto
+      aria-labelledby
+      aria-owns
     ].freeze
 
     # Elements that instantiate a referenced <marker> once per vertex, and the
@@ -110,7 +205,7 @@ module SafeImage
       begin
         SvgMetadata.dimensions_from_attributes(root_attributes, max_pixels: max_pixels)
       rescue InvalidImageError => e
-        raise unless e.message.include?("dimensions are missing")
+        raise unless e.message.match?("dimensions are missing")
       end
 
       in_doc = parse(xml)
@@ -151,9 +246,7 @@ module SafeImage
     # rejected upstream, so entity expansion is unreachable; NONET is set
     # defensively regardless.
     def parse(xml)
-      Nokogiri::XML(xml) do |config|
-        config.options = Nokogiri::XML::ParseOptions::NONET
-      end
+      Nokogiri.XML(xml) { |config| config.options = Nokogiri::XML::ParseOptions::NONET }
     rescue Nokogiri::XML::SyntaxError => e
       raise InvalidImageError, "invalid SVG: #{e.message}"
     end
@@ -201,11 +294,7 @@ module SafeImage
     def build_style_element(in_element, out, namespace)
       css = in_element.children.select { |c| c.text? || c.cdata? }.map(&:content).join
       sanitized = SvgCss.sanitize_stylesheet(css, namespace: namespace)
-      if sanitized
-        out.add_child(out.document.create_text_node(sanitized))
-      else
-        out.unlink
-      end
+      sanitized ? out.add_child(out.document.create_text_node(sanitized)) : out.unlink
     end
 
     # Copies only the attributes the policy allows, applying the same value
@@ -243,9 +332,7 @@ module SafeImage
     # tree. Done after the build so each attribute's namespace has resolved.
     def namespace_tree!(element, namespace)
       namespace_references!(element, namespace)
-      element.children.each do |child|
-        namespace_tree!(child, namespace) if child.is_a?(Nokogiri::XML::Element)
-      end
+      element.children.each { |child| namespace_tree!(child, namespace) if child.is_a?(Nokogiri::XML::Element) }
     end
 
     # Inline-safe output must not bind to the host document (or another inlined
@@ -310,10 +397,12 @@ module SafeImage
 
     def filter_unresolved_stylesheet(css, id_map)
       rules = []
-      css.to_s.scan(/([^{}]+)\{([^{}]*)\}/) do |selectors, body|
-        declarations = filter_unresolved_declarations(body, id_map)
-        rules << "#{selectors}{#{declarations}}" if declarations
-      end
+      css
+        .to_s
+        .scan(/([^{}]+)\{([^{}]*)\}/) do |selectors, body|
+          declarations = filter_unresolved_declarations(body, id_map)
+          rules << "#{selectors}{#{declarations}}" if declarations
+        end
       rules.empty? ? nil : rules.join
     end
 
@@ -392,10 +481,13 @@ module SafeImage
     def remove_marker_declarations(style)
       return nil unless style
 
-      kept = style.split(";").reject do |declaration|
-        property = declaration.split(":", 2).first.to_s
-        MARKER_ATTRIBUTES.include?(property)
-      end
+      kept =
+        style
+          .split(";")
+          .reject do |declaration|
+            property = declaration.split(":", 2).first.to_s
+            MARKER_ATTRIBUTES.include?(property)
+          end
       kept.empty? ? nil : kept.join(";")
     end
 
@@ -471,12 +563,12 @@ module SafeImage
         return id_namespace if id_namespace.match?(NAMESPACE_PATTERN)
         raise ArgumentError,
               "id_namespace: #{id_namespace.inspect} is not a valid namespace. It must be a letter " \
-              "followed by letters/digits/_/- (e.g. prefix a sha like \"u<sha>\")."
+                "followed by letters/digits/_/- (e.g. prefix a sha like \"u<sha>\")."
       else
         raise ArgumentError,
               "id_namespace: is required. Pass a stable, per-document String (e.g. the upload sha) " \
-              "to make the output safe to inline into HTML, or :standalone if it is only ever served " \
-              "as an <img>/CSS-url/file and never spliced into a page's DOM."
+                "to make the output safe to inline into HTML, or :standalone if it is only ever served " \
+                "as an <img>/CSS-url/file and never spliced into a page's DOM."
       end
     end
 
@@ -568,9 +660,7 @@ module SafeImage
     def collect_ids(element, id_map)
       id = element["id"]
       id_map[id.to_s] = element if id && !id_map.key?(id.to_s)
-      element.children.each do |child|
-        collect_ids(child, id_map) if child.is_a?(Nokogiri::XML::Element)
-      end
+      element.children.each { |child| collect_ids(child, id_map) if child.is_a?(Nokogiri::XML::Element) }
     end
 
     def subtree_render_cost(element, id_map, memo, active, stylesheet_markers)
@@ -642,34 +732,42 @@ module SafeImage
 
     def stylesheet_marker_rules(css)
       rules = []
-      css.to_s.scan(/([^{}]+)\{([^{}]*)\}/) do |selectors, body|
-        refs = []
-        body.to_s.split(";").each do |declaration|
-          property, value = declaration.split(":", 2)
-          next unless MARKER_ATTRIBUTES.include?(property.to_s.strip)
+      css
+        .to_s
+        .scan(/([^{}]+)\{([^{}]*)\}/) do |selectors, body|
+          refs = []
+          body
+            .to_s
+            .split(";")
+            .each do |declaration|
+              property, value = declaration.split(":", 2)
+              next if MARKER_ATTRIBUTES.none? { |candidate| candidate == property.to_s.strip }
 
-          value.to_s.scan(URL_FRAGMENT_REF) { refs << Regexp.last_match(2) }
+              value.to_s.scan(URL_FRAGMENT_REF) { refs << Regexp.last_match(2) }
+            end
+          rules << [selector_replicating_element_names(selectors), refs.uniq] unless refs.empty?
         end
-        rules << [selector_replicating_element_names(selectors), refs.uniq] unless refs.empty?
-      end
       rules
     end
 
     def selector_replicating_element_names(selectors)
       names = []
-      selectors.to_s.split(",").each do |selector|
-        selector_names = []
-        selector.scan(/(?:\A|[\s>])(\*|path|line|polyline|polygon)(?=[\s>.#]|\z)/i) do |match|
-          token = match.first.downcase
-          return REPLICATING_ELEMENTS if token == "*"
+      selectors
+        .to_s
+        .split(",")
+        .each do |selector|
+          selector_names = []
+          selector.scan(/(?:\A|[\s>])(\*|path|line|polyline|polygon)(?=[\s>.#]|\z)/i) do |match|
+            token = match.first.downcase
+            return REPLICATING_ELEMENTS if token == "*"
 
-          selector_names << token
+            selector_names << token
+          end
+          # A pure class/id selector may match any geometry element.
+          return REPLICATING_ELEMENTS if selector_names.empty?
+
+          names.concat(selector_names)
         end
-        # A pure class/id selector may match any geometry element.
-        return REPLICATING_ELEMENTS if selector_names.empty?
-
-        names.concat(selector_names)
-      end
       names.empty? ? REPLICATING_ELEMENTS : names.uniq
     end
 
@@ -681,9 +779,7 @@ module SafeImage
       sources = MARKER_ATTRIBUTES.map { |name| element[name].to_s }
       sources << element["style"].to_s
       targets = []
-      sources.each do |value|
-        value.scan(URL_FRAGMENT_REF) { targets << id_map[Regexp.last_match(2)] }
-      end
+      sources.each { |value| value.scan(URL_FRAGMENT_REF) { targets << id_map[Regexp.last_match(2)] } }
       targets.concat(stylesheet_markers.fetch(element.name.to_s, []))
       targets.compact.uniq
     end
@@ -696,7 +792,7 @@ module SafeImage
     def path_vertex_count(element)
       return 2 if element.name.to_s == "line"
 
-      geometry = "#{element['d']} #{element['points']}"
+      geometry = "#{element["d"]} #{element["points"]}"
       count = geometry.scan(/\d+(?:\.\d+)?/).length
       count.zero? ? 0 : count + 1
     end
@@ -725,8 +821,7 @@ module SafeImage
     end
 
     def serialize(root)
-      options = Nokogiri::XML::Node::SaveOptions::AS_XML |
-                Nokogiri::XML::Node::SaveOptions::NO_DECLARATION
+      options = Nokogiri::XML::Node::SaveOptions::AS_XML | Nokogiri::XML::Node::SaveOptions::NO_DECLARATION
       xml = root.to_xml(save_with: options)
       xml = xml.sub(%( xmlns:xlink="#{XLINK_NAMESPACE}"), "") unless xlink_used?(root)
       xml

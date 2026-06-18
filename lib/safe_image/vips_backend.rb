@@ -7,7 +7,15 @@ module SafeImage
     DIMENSIONS_RE = /\A(?:(?<percent>\d+(?:\.\d+)?)%|(?<w>\d*)x(?<h>\d*)(?<only_down>>)?|(?<pixels>\d+)@)\z/
 
     def crop_north(input:, output:, width:, height:, format:, quality: 85, max_pixels: nil)
-      Native.crop_north(input.to_s, output.to_s, Integer(width), Integer(height), format.to_s, Integer(quality), max_pixels)
+      Native.crop_north(
+        input.to_s,
+        output.to_s,
+        Integer(width),
+        Integer(height),
+        format.to_s,
+        Integer(quality),
+        max_pixels
+      )
     end
 
     def downsize(input:, output:, dimensions:, format:, quality: 85, max_pixels: nil)
@@ -86,9 +94,7 @@ module SafeImage
       dimensions = dimensions.to_s
       match = DIMENSIONS_RE.match(dimensions) or raise ArgumentError, "unsupported dimensions: #{dimensions.inspect}"
 
-      if match[:percent]
-        return Float(match[:percent]) / 100.0
-      end
+      return Float(match[:percent]) / 100.0 if match[:percent]
 
       if match[:pixels]
         target_pixels = Float(match[:pixels])

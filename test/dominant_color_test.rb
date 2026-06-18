@@ -34,10 +34,15 @@ module SafeImage
         magick = SafeImage.dominant_color(fixture, max_pixels: PNG_PIXELS)
         configure_safe_image(backend: :vips)
 
-        vips.scan(/../).zip(magick.scan(/../)).each do |v, m|
-          assert_in_delta v.to_i(16), m.to_i(16), 8,
-            "channel drift on #{File.basename(fixture)} (vips=#{vips} imagemagick=#{magick})"
-        end
+        vips
+          .scan(/../)
+          .zip(magick.scan(/../))
+          .each do |v, m|
+            assert_in_delta v.to_i(16),
+                            m.to_i(16),
+                            8,
+                            "channel drift on #{File.basename(fixture)} (vips=#{vips} imagemagick=#{magick})"
+          end
       end
     end
 
@@ -53,9 +58,7 @@ module SafeImage
     end
 
     def test_heic
-      heic_or_skip do
-        assert_match HEX_COLOR, SafeImage.dominant_color(HEIC, max_pixels: PNG_PIXELS)
-      end
+      heic_or_skip { assert_match HEX_COLOR, SafeImage.dominant_color(HEIC, max_pixels: PNG_PIXELS) }
     end
 
     def test_enforces_max_pixels_on_both_backends

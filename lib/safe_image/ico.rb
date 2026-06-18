@@ -58,7 +58,7 @@ module SafeImage
         # reaches a decoder.
         validate_pixels!(*entry_dimensions(data, entry), max_pixels)
         payload = data.byteslice(entry.offset, entry.size)
-        Tempfile.create(["safe-image-ico", ".png"]) do |tmp|
+        Tempfile.create(%w[safe-image-ico .png]) do |tmp|
           tmp.binmode
           tmp.write(payload)
           tmp.close
@@ -84,7 +84,7 @@ module SafeImage
     end
 
     def dominant_color(path, max_pixels: nil)
-      Tempfile.create(["safe-image-ico", ".png"]) do |tmp|
+      Tempfile.create(%w[safe-image-ico .png]) do |tmp|
         tmp.close
         convert_to_png(path, tmp.path, max_pixels: max_pixels)
         VipsBackend.dominant_color(tmp.path, max_pixels: max_pixels)
@@ -136,7 +136,7 @@ module SafeImage
     # PNG payloads carry their real dimensions in the IHDR chunk; the
     # one-byte directory fields saturate at 256.
     def entry_dimensions(data, entry)
-      return [entry.width, entry.height] unless entry.png
+      return entry.width, entry.height unless entry.png
       raise InvalidImageError, "png payload is truncated" if entry.size < 24
       data.byteslice(entry.offset + 16, 8).unpack("NN")
     end
@@ -160,7 +160,7 @@ module SafeImage
         payload.unpack("Vl<l<vvVVl<l<V")
       raise InvalidImageError, "unsupported dib header (size #{header_size})" if header_size != 40
       raise InvalidImageError, "unsupported dib compression #{compression}" unless compression == BI_RGB
-      raise InvalidImageError, "unsupported dib bit depth #{bpp}" unless [1, 4, 8, 24, 32].include?(bpp)
+      raise InvalidImageError, "unsupported dib bit depth #{bpp}" if [1, 4, 8, 24, 32].none? { |bits| bits == bpp }
 
       top_down = height2.negative?
       height = height2.abs / 2
@@ -174,9 +174,12 @@ module SafeImage
         palette_count = colors_used.zero? ? (1 << bpp) : colors_used
         raise InvalidImageError, "dib palette is invalid" if palette_count > 1 << bpp
         raise InvalidImageError, "dib palette is truncated" if payload.bytesize < palette_offset + palette_count * 4
-        palette = payload.byteslice(palette_offset, palette_count * 4).unpack("C*").each_slice(4).map do |b, g, r, _x|
-          [r, g, b]
-        end
+        palette =
+          payload
+            .byteslice(palette_offset, palette_count * 4)
+            .unpack("C*")
+            .each_slice(4)
+            .map { |b, g, r, _x| [r, g, b] }
         palette_offset += palette_count * 4
       end
 
@@ -184,7 +187,9 @@ module SafeImage
       and_stride = ((width + 31) / 32) * 4
       xor_bytes = xor_stride * height
       and_bytes = and_stride * height
-      raise InvalidImageError, "dib pixel data is truncated" if payload.bytesize < palette_offset + xor_bytes + and_bytes
+      if payload.bytesize < palette_offset + xor_bytes + and_bytes
+        raise InvalidImageError, "dib pixel data is truncated"
+      end
 
       xor_data = payload.byteslice(palette_offset, xor_bytes)
       and_data = payload.byteslice(palette_offset + xor_bytes, and_bytes)
@@ -205,9 +210,7 @@ module SafeImage
     # rotate-right-by-8.
     def decode_32bpp(xor_data, and_data, width, height, and_stride, top_down)
       stride = width * 4
-      unless top_down
-        xor_data = (0...height).map { |y| xor_data.byteslice((height - 1 - y) * stride, stride) }.join
-      end
+      xor_data = (0...height).map { |y| xor_data.byteslice((height - 1 - y) * stride, stride) }.join unless top_down
       pixels = xor_data.unpack("N*")
 
       if alpha_all_zero?(xor_data)
@@ -261,10 +264,15 @@ module SafeImage
 
           index =
             case bpp
-            when 8 then xor_row.getbyte(x)
-            when 4 then (byte = xor_row.getbyte(x >> 1)
-                         x.even? ? byte >> 4 : byte & 0x0F)
-            else (xor_row.getbyte(x >> 3) >> (7 - (x & 7))) & 1
+            when 8
+              xor_row.getbyte(x)
+            when 4
+              (
+                byte = xor_row.getbyte(x >> 1)
+                x.even? ? byte >> 4 : byte & 0x0F
+              )
+            else
+              (xor_row.getbyte(x >> 3) >> (7 - (x & 7))) & 1
             end
           rgba << (masked ? transparent : opaque).fetch(index) do
             raise InvalidImageError, "dib palette index #{index} is out of range"

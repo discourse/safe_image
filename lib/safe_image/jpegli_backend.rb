@@ -28,16 +28,30 @@ module SafeImage
       ensure_jpeg_output!(output)
 
       input_format = normalized_ext(input)
-      unless DIRECT_INPUTS.include?(input_format)
+      if DIRECT_INPUTS.none? { |candidate| candidate == input_format }
         raise UnsupportedFormatError, "cjpegli direct input format is unsupported: #{input_format.inspect}"
       end
 
       quality = validate_quality!(quality)
       chroma_subsampling = validate_chroma_subsampling!(chroma_subsampling, input_format: input_format)
-      encode(input: input, output: output, quality: quality, chroma_subsampling: chroma_subsampling, timeout: timeout, input_format: input_format)
+      encode(
+        input: input,
+        output: output,
+        quality: quality,
+        chroma_subsampling: chroma_subsampling,
+        timeout: timeout,
+        input_format: input_format
+      )
     end
 
-    def encode(input:, output:, quality: DEFAULT_QUALITY, chroma_subsampling: "420", timeout: Runner::DEFAULT_TIMEOUT, input_format: nil)
+    def encode(
+      input:,
+      output:,
+      quality: DEFAULT_QUALITY,
+      chroma_subsampling: "420",
+      timeout: Runner::DEFAULT_TIMEOUT,
+      input_format: nil
+    )
       raise UnsupportedFormatError, "cjpegli is not installed" unless available?
 
       input = PathSafety.ensure_regular_file!(input)
@@ -94,7 +108,9 @@ module SafeImage
       value = "444" if value.to_sym == :auto && input_format.to_s == "png"
       value = "420" if value.to_sym == :auto
       value = value.to_s
-      raise ArgumentError, "chroma_subsampling must be one of #{CHROMA_SUBSAMPLING.join(", ")}" unless CHROMA_SUBSAMPLING.include?(value)
+      if CHROMA_SUBSAMPLING.none? { |candidate| candidate == value }
+        raise ArgumentError, "chroma_subsampling must be one of #{CHROMA_SUBSAMPLING.join(", ")}"
+      end
       value
     end
 

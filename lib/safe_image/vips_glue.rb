@@ -90,10 +90,11 @@ module SafeImage
           raise @load_error if @load_error
 
           handle = open_library
-          @functions = SIGNATURES.to_h do |name, (args, ret)|
-            address = handle[name.to_s]
-            [name, Fiddle::Function.new(address, args.map { |t| TYPE.fetch(t) }, TYPE.fetch(ret))]
-          end
+          @functions =
+            SIGNATURES.to_h do |name, (args, ret)|
+              address = handle[name.to_s]
+              [name, Fiddle::Function.new(address, args.map { |t| TYPE.fetch(t) }, TYPE.fetch(ret))]
+            end
 
           silence_vips_log!
           raise Error, "vips_init failed: #{error_message}" if c(:vips_init, "safe_image") != 0
@@ -154,10 +155,11 @@ module SafeImage
       # so deterministic unref in reverse order is sufficient.
       def with_images
         acquired = []
-        track = lambda do |ptr|
-          acquired << ptr
-          ptr
-        end
+        track =
+          lambda do |ptr|
+            acquired << ptr
+            ptr
+          end
         init!
         yield track
       ensure
@@ -234,9 +236,10 @@ module SafeImage
         rescue Fiddle::DLError => e
           errors << e.message
         end
-        @load_error = VipsUnavailableError.new(
-          "could not load libvips (install the libvips runtime package, e.g. libvips42 on Debian): #{errors.join("; ")}"
-        )
+        @load_error =
+          VipsUnavailableError.new(
+            "could not load libvips (install the libvips runtime package, e.g. libvips42 on Debian): #{errors.join("; ")}"
+          )
         raise @load_error
       end
 
@@ -323,13 +326,20 @@ module SafeImage
 
       def write_gvalue(gvalue, value_type, name, value)
         case c(:g_type_fundamental, value_type)
-        when @gtype[:boolean] then c(:g_value_set_boolean, gvalue, value ? 1 : 0)
-        when @gtype[:int] then c(:g_value_set_int, gvalue, Integer(value))
-        when @gtype[:double] then c(:g_value_set_double, gvalue, Float(value))
-        when @gtype[:string] then c(:g_value_set_string, gvalue, value.to_s)
-        when @gtype[:enum] then c(:g_value_set_enum, gvalue, enum_value(value_type, value))
-        when @gtype[:flags] then c(:g_value_set_flags, gvalue, Integer(value))
-        when @gtype[:object] then c(:g_value_set_object, gvalue, value)
+        when @gtype[:boolean]
+          c(:g_value_set_boolean, gvalue, value ? 1 : 0)
+        when @gtype[:int]
+          c(:g_value_set_int, gvalue, Integer(value))
+        when @gtype[:double]
+          c(:g_value_set_double, gvalue, Float(value))
+        when @gtype[:string]
+          c(:g_value_set_string, gvalue, value.to_s)
+        when @gtype[:enum]
+          c(:g_value_set_enum, gvalue, enum_value(value_type, value))
+        when @gtype[:flags]
+          c(:g_value_set_flags, gvalue, Integer(value))
+        when @gtype[:object]
+          c(:g_value_set_object, gvalue, value)
         when @gtype[:boxed]
           raise Error, "unsupported boxed type for #{name.inspect}" unless value_type == @gtype[:array_double]
           doubles = Array(value).map { |v| Float(v) }

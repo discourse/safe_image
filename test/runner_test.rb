@@ -36,9 +36,7 @@ module SafeImage
     # standard streams but keeps running must still be killed at the deadline.
     def test_enforces_command_timeout
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      error = assert_raises(CommandError) do
-        Runner.run!(["sh", "-c", "exec >/dev/null 2>&1; sleep 10"], timeout: 1)
-      end
+      error = assert_raises(CommandError) { Runner.run!(["sh", "-c", "exec >/dev/null 2>&1; sleep 10"], timeout: 1) }
       assert_includes error.message, "timed out"
 
       elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started

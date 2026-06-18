@@ -16,9 +16,7 @@ module SafeImage
       output = tmp_path("out.jpg")
       File.symlink(victim, output)
 
-      assert_raises(UnsafePathError) do
-        SafeImage.thumbnail(input: JPG, output: output, width: 10, height: 10)
-      end
+      assert_raises(UnsafePathError) { SafeImage.thumbnail(input: JPG, output: output, width: 10, height: 10) }
       assert_equal "victim", File.read(victim), "symlink output target changed"
     end
 

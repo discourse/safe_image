@@ -22,8 +22,10 @@ module SafeImage
       GC.start
       after = rss_kb
 
-      assert_operator after - before, :<, ALLOWED_GROWTH_KB,
-        "RSS grew #{after - before}KB over #{ITERATIONS} iterations; the binding is likely leaking references"
+      assert_operator after - before,
+                      :<,
+                      ALLOWED_GROWTH_KB,
+                      "RSS grew #{after - before}KB over #{ITERATIONS} iterations; the binding is likely leaking references"
     end
 
     private
@@ -34,7 +36,14 @@ module SafeImage
     def exercise
       SafeImage.size(GIF, max_pixels: PNG_PIXELS)
       SafeImage.dominant_color(GIF, max_pixels: PNG_PIXELS)
-      SafeImage.thumbnail(input: GIF, output: tmp_path("leak.jpg"), width: 64, height: 64, optimize: false, max_pixels: PNG_PIXELS)
+      SafeImage.thumbnail(
+        input: GIF,
+        output: tmp_path("leak.jpg"),
+        width: 64,
+        height: 64,
+        optimize: false,
+        max_pixels: PNG_PIXELS
+      )
       SafeImage.letter_avatar(output: tmp_path("leak.png"), size: 64, background_rgb: [1, 2, 3], letter: "S")
       Native.png_from_rgba("\xFF\x00\x00\xFF".b * 64, 8, 8, tmp_path("leak-rgba.png"))
     end

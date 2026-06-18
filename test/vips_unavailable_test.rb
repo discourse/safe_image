@@ -52,9 +52,14 @@ module SafeImage
     def test_imagemagick_backend_works_without_libvips
       env = {
         "SAFE_IMAGE_LIBVIPS" => "libsafe-image-no-such-library.so.0",
-        "JPG" => JPG, "PNG" => PNG, "GIF" => GIF, "ICO" => ICO, "OUT" => tmpdir
+        "JPG" => JPG,
+        "PNG" => PNG,
+        "GIF" => GIF,
+        "ICO" => ICO,
+        "OUT" => tmpdir
       }
-      stdout, stderr, status = Open3.capture3(env, RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", SCRIPT)
+      stdout, stderr, status =
+        Open3.capture3(env, RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", SCRIPT)
 
       assert status.success?, "vips-less child process failed:\n#{stderr}"
       out = JSON.parse(stdout.lines.last)

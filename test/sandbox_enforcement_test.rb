@@ -35,9 +35,7 @@ module SafeImage
       # parent's load paths through so those deps resolve, but drop landlock so
       # it stays genuinely unloadable and sandbox_available? reports false.
       load_paths = [File.expand_path("../lib", __dir__), *$LOAD_PATH]
-      load_paths.reject { |path| path.to_s.include?("landlock") }.uniq.each do |path|
-        command += ["-I", path]
-      end
+      load_paths.reject { |path| path.to_s.include?("landlock") }.uniq.each { |path| command += ["-I", path] }
 
       stdout, stderr, status = Open3.capture3(env, *command, "-e", SCRIPT)
 

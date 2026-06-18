@@ -54,26 +54,26 @@ module SafeImage
     }.freeze
 
     SVG_HUSH_PRESENTATION_URL_VECTORS = [
-      [%q{urL ('//spacecase.invalid/url.svg#p1')}, nil],
-      [%q{url(./test.gif)}, nil],
-      [%q{url(#p1)}, "u1-p1"],
-      [%q{url(url.svg#p1)}, nil],
-      [%q{url(//test.invalid/url.svg#p1)}, nil],
-      [%q{url('//quotes.invalid/url.svg#p2')}, nil],
-      [%q{url( &quot; //dquotes.invalid/url.svg#p3&quot;)}, nil],
-      [%q{URL('//uppercase.invalid/url.svg#p4')}, nil],
-      [%q{Url('//titlecase.invalid/url.svg#p5')}, nil],
+      ["urL ('//spacecase.invalid/url.svg#p1')", nil],
+      ["url(./test.gif)", nil],
+      %w[url(#p1) u1-p1],
+      ["url(url.svg#p1)", nil],
+      ["url(//test.invalid/url.svg#p1)", nil],
+      ["url('//quotes.invalid/url.svg#p2')", nil],
+      ["url( &quot; //dquotes.invalid/url.svg#p3&quot;)", nil],
+      ["URL('//uppercase.invalid/url.svg#p4')", nil],
+      ["Url('//titlecase.invalid/url.svg#p5')", nil],
       [%q{url(//innerparen.invalid/url.svg(\)#p6)}, nil],
-      [%q{url('//innerparenq.invalid/url.svg()#p7')}, nil],
+      ["url('//innerparenq.invalid/url.svg()#p7')", nil],
       [%q{ur\l('//backslash.invalid/url.svg()#p8')}, nil],
-      [%q{url('http://x.example.com/test.svg')}, nil],
-      [%q{url('https://x.example.com/test.svg')}, nil],
-      [%q{  url(  ' https://x.example.com/test.svg '  ) }, nil],
-      [%q{url('ftp://192.168.2.1/test.svg')}, nil],
-      [%q{url('//x.example.com/test.svg')}, nil],
-      [%q{url&#40;'//x.example.com/test.svg')}, nil],
-      [%q{url(&quot;/test.svg&quot;)}, nil],
-      [%q{ur&#108;('#test.svg')}, "u1-test.svg"]
+      ["url('http://x.example.com/test.svg')", nil],
+      ["url('https://x.example.com/test.svg')", nil],
+      ["  url(  ' https://x.example.com/test.svg '  ) ", nil],
+      ["url('ftp://192.168.2.1/test.svg')", nil],
+      ["url('//x.example.com/test.svg')", nil],
+      ["url&#40;'//x.example.com/test.svg')", nil],
+      ["url(&quot;/test.svg&quot;)", nil],
+      %w[ur&#108;('#test.svg') u1-test.svg]
     ].freeze
 
     SVG_HUSH_URL_FILTER_VECTORS = [
@@ -127,7 +127,12 @@ module SafeImage
 
     def test_svg_hush_urlfunc_vectors_in_presentation_attributes
       SVG_HUSH_URLFUNC_VALUES.each_with_index do |(value, should_keep), index|
-        tag = sanitize_single_element(%(<rect fill="#{xml_attr(value)}"/>), id_namespace: "u1", name: "urlfunc-#{index}.svg")
+        tag =
+          sanitize_single_element(
+            %(<rect fill="#{xml_attr(value)}"/>),
+            id_namespace: "u1",
+            name: "urlfunc-#{index}.svg"
+          )
 
         if should_keep
           assert_includes tag, "fill=", "dropped harmless non-url fill value #{value.inspect}"
@@ -166,7 +171,8 @@ module SafeImage
 
     def test_svg_hush_href_url_filter_vectors_are_fragment_only
       SVG_HUSH_URL_FILTER_VECTORS.each_with_index do |(href, expected_fragment), index|
-        tag = sanitize_single_element(%(<use href="#{xml_attr(href)}"/>), id_namespace: "u1", name: "href-url-#{index}.svg")
+        tag =
+          sanitize_single_element(%(<use href="#{xml_attr(href)}"/>), id_namespace: "u1", name: "href-url-#{index}.svg")
 
         if expected_fragment
           assert_includes tag, "href=\"##{expected_fragment}\"", "lost safe fragment href #{href.inspect}"
@@ -230,8 +236,11 @@ module SafeImage
       SVG
 
       refute_match(/<style|<svg:style/i, out, "kept a svg-hush bad style element")
-      refute_match(/@|font-face|import|data:|example\d?\.invalid|honk|surprise/i, out,
-                   "kept unsafe stylesheet content from svg-hush corpus")
+      refute_match(
+        /@|font-face|import|data:|example\d?\.invalid|honk|surprise/i,
+        out,
+        "kept unsafe stylesheet content from svg-hush corpus"
+      )
     end
 
     def test_svg_hush_mixed_element_and_attribute_corpus_is_neutralized
@@ -274,12 +283,18 @@ module SafeImage
         </svg>
       SVG
 
-      refute_match(/<\/?(?:img|image|a|metadata|link|foreignObject|html|bad|this|script)\b/i, out,
-                   "kept non-allowlisted element from svg-hush corpus")
-      refute_match(/(?:onload|alert|javascript|data-name|xml:space|rdf:|the=|worst=|xmlns:rdf|xmlns:hax|xmlns:html|xmlns:x=|xmlns:xhtml|xhtml:|nope|evil|example\d?\.invalid|test\.invalid|background|@import)/i,
-                   out, "kept non-allowlisted attribute/namespace or active payload")
-      refute_match(/\bhref='\//, out, "kept root-relative href from svg-hush corpus")
-      refute_match(/marker-start|url\(http|url\(\//i, out, "kept unsafe marker/url reference from svg-hush corpus")
+      refute_match(
+        %r{</?(?:img|image|a|metadata|link|foreignObject|html|bad|this|script)\b}i,
+        out,
+        "kept non-allowlisted element from svg-hush corpus"
+      )
+      refute_match(
+        /(?:onload|alert|javascript|data-name|xml:space|rdf:|the=|worst=|xmlns:rdf|xmlns:hax|xmlns:html|xmlns:x=|xmlns:xhtml|xhtml:|nope|evil|example\d?\.invalid|test\.invalid|background|@import)/i,
+        out,
+        "kept non-allowlisted attribute/namespace or active payload"
+      )
+      refute_match(%r{\bhref='/}, out, "kept root-relative href from svg-hush corpus")
+      refute_match(%r{marker-start|url\(http|url\(/}i, out, "kept unsafe marker/url reference from svg-hush corpus")
       assert_includes out, 'style="fill:red"', "dropped safe declaration before escaped @import"
       assert_includes out, 'marker-end="url(#u1-ok)"', "dropped safe marker fragment while removing unsafe neighbors"
       assert_includes out, "<line", "dropped safe line after removing event handlers"
@@ -327,10 +342,16 @@ module SafeImage
     end
 
     def assert_no_fetching_url(output, context)
-      refute_match(%r{(?:https?:|ftp:|data:|blob:|javascript:|//|(?:^|[\s'\"])/(?!>)|\.\.?/) }ix, output,
-                   "kept fetching URL from #{context.inspect}: #{output}")
-      refute_match(/(?:evil|invalid|example\.com|test\.gif|url\.svg|defs\.svg)/i, output,
-                   "kept external test host/path from #{context.inspect}: #{output}")
+      refute_match(
+        %r{(?:https?:|ftp:|data:|blob:|javascript:|//|(?:^|[\s'\"])/(?!>)|\.\.?/) }ix,
+        output,
+        "kept fetching URL from #{context.inspect}: #{output}"
+      )
+      refute_match(
+        /(?:evil|invalid|example\.com|test\.gif|url\.svg|defs\.svg)/i,
+        output,
+        "kept external test host/path from #{context.inspect}: #{output}"
+      )
     end
   end
 end

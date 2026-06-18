@@ -46,8 +46,10 @@ module SafeImage
       # 2x2 32bpp, all alpha bytes zero (pre-alpha icon): TL red, TR green
       # (masked transparent), BL blue, BR white. Rows stored bottom-up.
       xor = [
-        [255, 0, 0, 0], [255, 255, 255, 0], # bottom row: blue, white (BGRA)
-        [0, 0, 255, 0], [0, 255, 0, 0]      # top row: red, green
+        [255, 0, 0, 0],
+        [255, 255, 255, 0], # bottom row: blue, white (BGRA)
+        [0, 0, 255, 0],
+        [0, 255, 0, 0] # top row: red, green
       ].flatten.pack("C*")
       and_mask = "\x00\x00\x00\x00".b + "\x40\x00\x00\x00".b
       header = [40, 2, 4, 1, 32, 0, 0, 0, 0, 0, 0].pack("Vl<l<vvVVl<l<VV")

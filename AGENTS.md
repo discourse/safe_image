@@ -8,6 +8,8 @@ Guidance for AI coding agents working in this repository. CLAUDE.md is a symlink
 - Single file: `bundle exec rake test TEST=test/svg_sanitizer_test.rb`
 - Single test: add `TESTOPTS="--name=/pattern/"`
 - Lint: `bundle exec rubocop` (inherits rubocop-discourse; CI runs this)
+- Format: `bundle exec rake format` — run after changing Ruby/C source; uses Syntax Tree (`stree`, print width 120) for Ruby and `clang-format` for `ext/**/*.{c,h}`.
+- Format check: `bundle exec rake format:check`
 - `docker/run.sh` — runs the suite in a Debian bookworm container against the oldest supported packaged libvips (8.14), including native-helper build/install validation.
 - Tests shell out to real tools: the libvips runtime library, `magick`, `jpegoptim`, `pngquant`, `oxipng` are required; `cjpegli`, HEIC delegates, and Landlock are optional — tests for them skip when missing.
 
@@ -15,6 +17,7 @@ Guidance for AI coding agents working in this repository. CLAUDE.md is a symlink
 
 - **Never commit.** The user makes all commits themselves; leave changes in the working tree.
 - **Never change `SafeImage::VERSION`.** A version bump on main auto-publishes the gem to RubyGems via CI.
+- **Always format after editing code.** After fiddling with Ruby or C source, run `bundle exec rake format` before final verification, then use `bundle exec rake format:check`/`bundle exec rubocop` as appropriate.
 
 ## Testing conventions
 

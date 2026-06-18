@@ -10,18 +10,26 @@ module SafeImage
 
     # EXIF orientation values mapped onto jpegtran's lossless transforms.
     JPEGTRAN_OPERATIONS = {
-      2 => ["-flip", "horizontal"],
-      3 => ["-rotate", "180"],
-      4 => ["-flip", "vertical"],
+      2 => %w[-flip horizontal],
+      3 => %w[-rotate 180],
+      4 => %w[-flip vertical],
       5 => ["-transpose"],
-      6 => ["-rotate", "90"],
+      6 => %w[-rotate 90],
       7 => ["-transverse"],
-      8 => ["-rotate", "270"]
+      8 => %w[-rotate 270]
     }.freeze
 
     # assume_upright: skips the JPEG orientation check; only for callers
     # optimising output this gem just encoded (which is always upright).
-    def optimize(path, mode: :lossless, strip_metadata: true, quality: nil, timeout: Runner::DEFAULT_TIMEOUT, strict: true, assume_upright: false)
+    def optimize(
+      path,
+      mode: :lossless,
+      strip_metadata: true,
+      quality: nil,
+      timeout: Runner::DEFAULT_TIMEOUT,
+      strict: true,
+      assume_upright: false
+    )
       path = PathSafety.ensure_regular_file!(path)
 
       ext = path.extname.delete_prefix(".").downcase
@@ -42,7 +50,16 @@ module SafeImage
         if orientation > 1
           unless Runner.available?("jpegtran")
             raise Error, "jpegtran is required to optimize a JPEG with EXIF orientation" if strict
-            return { format: ext, before_bytes: before, after_bytes: before, saved_bytes: 0, tools: tools, rotated_from: nil, trimmed: false }
+            skipped = {
+              format: ext,
+              before_bytes: before,
+              after_bytes: before,
+              saved_bytes: 0,
+              tools: tools,
+              rotated_from: nil,
+              trimmed: false
+            }
+            return skipped
           end
           trimmed = upright!(path, orientation, timeout: timeout)
           rotated_from = orientation
@@ -50,7 +67,7 @@ module SafeImage
         end
 
         if Runner.available?("jpegoptim")
-          argv = ["jpegoptim", "--quiet"]
+          argv = %w[jpegoptim --quiet]
           argv << (strip_metadata ? "--strip-all" : "--strip-none")
           argv << "--max=#{Integer(quality)}" if quality
           argv << path.to_s
@@ -77,7 +94,7 @@ module SafeImage
                 # met. Both mean "keep the original", not a failure — and the
                 # pre-created tempfile is still empty, so it must not win the
                 # size comparison below.
-                raise unless [98, 99].include?(e.status)
+                raise if [98, 99].none? { |status| status == e.status }
                 skipped = true
               end
               if !skipped && tmp_path.file? && File.size(tmp_path).positive? && File.size(tmp_path) < File.size(path)
@@ -93,7 +110,7 @@ module SafeImage
         end
 
         if Runner.available?("oxipng")
-          argv = ["oxipng", "--quiet", "-o", "3"]
+          argv = %w[oxipng --quiet -o 3]
           argv.concat(["--strip", strip_metadata ? "safe" : "none"])
           argv << path.to_s
           Runner.run!(argv, timeout: timeout)
@@ -119,8 +136,10 @@ module SafeImage
 
     def jpeg_orientation(path)
       case SafeImage.config.backend
-      when :vips then VipsBackend.orientation(path.to_s)
-      when :imagemagick then ImageMagickBackend.orientation(path.to_s)
+      when :vips
+        VipsBackend.orientation(path.to_s)
+      when :imagemagick
+        ImageMagickBackend.orientation(path.to_s)
       end
     end
 
@@ -138,9 +157,15 @@ module SafeImage
       begin
         trimmed = false
         begin
-          Runner.run!(["jpegtran", "-copy", "none", "-perfect", *transform, "-outfile", tmp_path.to_s, path.to_s], timeout: timeout)
+          Runner.run!(
+            ["jpegtran", "-copy", "none", "-perfect", *transform, "-outfile", tmp_path.to_s, path.to_s],
+            timeout: timeout
+          )
         rescue CommandError
-          Runner.run!(["jpegtran", "-copy", "none", "-trim", *transform, "-outfile", tmp_path.to_s, path.to_s], timeout: timeout)
+          Runner.run!(
+            ["jpegtran", "-copy", "none", "-trim", *transform, "-outfile", tmp_path.to_s, path.to_s],
+            timeout: timeout
+          )
           trimmed = true
         end
         FileUtils.mv(tmp_path, path)

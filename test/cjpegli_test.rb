@@ -46,9 +46,10 @@ module SafeImage
 
     def test_convert_falls_back_to_vips_for_heic_input
       require_cjpegli!
-      result = heic_or_skip do
-        SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
-      end
+      result =
+        heic_or_skip do
+          SafeImage.convert(HEIC, tmp_path("heic.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
+        end
 
       refute_equal "cjpegli", result.backend, "cjpegli cannot decode HEIC directly"
     end
@@ -65,7 +66,8 @@ module SafeImage
 
     def test_thumbnail_on_the_imagemagick_backend_never_uses_cjpegli
       configure_safe_image(backend: :imagemagick)
-      result = SafeImage.thumbnail(input: JPG, output: tmp_path("im.jpg"), width: 60, height: 40, max_pixels: JPG_PIXELS)
+      result =
+        SafeImage.thumbnail(input: JPG, output: tmp_path("im.jpg"), width: 60, height: 40, max_pixels: JPG_PIXELS)
 
       assert_equal "imagemagick", result.backend
     end
@@ -92,10 +94,15 @@ module SafeImage
     def test_thumbnail_from_png_source_with_auto_chroma_subsampling
       require_cjpegli!
       out = tmp_path("thumb-from-png.jpg")
-      result = SafeImage.thumbnail(
-        input: PNG, output: out,
-        width: 320, height: 200, chroma_subsampling: :auto, max_pixels: PNG_PIXELS
-      )
+      result =
+        SafeImage.thumbnail(
+          input: PNG,
+          output: out,
+          width: 320,
+          height: 200,
+          chroma_subsampling: :auto,
+          max_pixels: PNG_PIXELS
+        )
 
       assert_includes result.backend, "cjpegli"
       assert_jpeg_magic out

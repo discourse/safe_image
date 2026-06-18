@@ -38,8 +38,8 @@ module SafeImage
     NON_UTF8_BOMS = [
       "\xFF\xFE\x00\x00".b, # UTF-32 LE
       "\x00\x00\xFE\xFF".b, # UTF-32 BE
-      "\xFF\xFE".b,         # UTF-16 LE
-      "\xFE\xFF".b          # UTF-16 BE
+      "\xFF\xFE".b, # UTF-16 LE
+      "\xFE\xFF".b # UTF-16 BE
     ].freeze
 
     UTF8_BOM = "\xEF\xBB\xBF".b.freeze
@@ -55,8 +55,7 @@ module SafeImage
     # "utf8" or "windows-1259" fit the pattern yet name no real encoding, so a
     # name must also resolve via Encoding.find to pass — lookalikes fail
     # closed here instead of leaking REXML's bare ArgumentError to the caller.
-    SAFE_DECLARED_ENCODING =
-      /\A(?:utf-?8|us-ascii|ascii|iso-?8859-?\d{1,2}|(?:windows|cp)-?125\d)\z/i.freeze
+    SAFE_DECLARED_ENCODING = /\A(?:utf-?8|us-ascii|ascii|iso-?8859-?\d{1,2}|(?:windows|cp)-?125\d)\z/i.freeze
     # ASCII-only so it matches the binary buffer; the optional BOM is stripped
     # before matching rather than embedded here (which would make this UTF-8).
     XML_DECL_ENCODING = /\A\s*<\?xml\b[^>]*?\bencoding\s*=\s*["']([^"']+)["']/i.freeze
@@ -177,17 +176,20 @@ module SafeImage
 
     def validate_dimensions!(width, height, max_pixels: nil)
       raise InvalidImageError, "SVG dimensions are missing or invalid" unless width&.positive? && height&.positive?
-      raise LimitError, "SVG dimensions exceed #{MAX_SVG_DIMENSION}px" if width > MAX_SVG_DIMENSION || height > MAX_SVG_DIMENSION
+      if width > MAX_SVG_DIMENSION || height > MAX_SVG_DIMENSION
+        raise LimitError, "SVG dimensions exceed #{MAX_SVG_DIMENSION}px"
+      end
 
       pixels = width * height
-      limit = if max_pixels.nil?
-        MAX_SVG_PIXELS
-      else
-        value = Integer(max_pixels)
-        raise ArgumentError, "max_pixels must be positive" if value <= 0
+      limit =
+        if max_pixels.nil?
+          MAX_SVG_PIXELS
+        else
+          value = Integer(max_pixels)
+          raise ArgumentError, "max_pixels must be positive" if value <= 0
 
-        value
-      end
+          value
+        end
       raise LimitError, "SVG has #{pixels.to_i} pixels, exceeds #{limit}" if pixels > limit
 
       [width.ceil, height.ceil]
@@ -245,60 +247,63 @@ module SafeImage
     # parse aborts promptly rather than scanning to the end (verified: rejection
     # time grows far slower than input size).
     def cap_scanner_class
-      @cap_scanner_class ||= Class.new(Nokogiri::XML::SAX::Document) do
-        attr_reader :root_name, :root_attributes, :parse_error
+      @cap_scanner_class ||=
+        Class.new(Nokogiri::XML::SAX::Document) do
+          attr_reader :root_name, :root_attributes, :parse_error
 
-        def initialize
-          super
-          @depth = -1
-          @elements = 0
-          @attributes = 0
-          @root_name = nil
-          @root_attributes = nil
-          @parse_error = nil
-        end
+          def initialize
+            super
+            @depth = -1
+            @elements = 0
+            @attributes = 0
+            @root_name = nil
+            @root_attributes = nil
+            @parse_error = nil
+          end
 
-        # attrs: array of Nokogiri::XML::SAX::Parser::Attribute (localname/value),
-        # NOT including namespace declarations; `ns` carries the xmlns decls. Both
-        # count toward the attribute cap so the bound cannot be sidestepped by
-        # spraying namespace declarations.
-        def start_element_namespace(name, attrs = [], _prefix = nil, _uri = nil, ns = [])
-          @depth += 1
-          raise LimitError, "SVG nesting exceeds #{MAX_SVG_DEPTH}" if @depth > MAX_SVG_DEPTH
+          # attrs: array of Nokogiri::XML::SAX::Parser::Attribute (localname/value),
+          # NOT including namespace declarations; `ns` carries the xmlns decls. Both
+          # count toward the attribute cap so the bound cannot be sidestepped by
+          # spraying namespace declarations.
+          def start_element_namespace(name, attrs = [], _prefix = nil, _uri = nil, ns = [])
+            @depth += 1
+            raise LimitError, "SVG nesting exceeds #{MAX_SVG_DEPTH}" if @depth > MAX_SVG_DEPTH
 
-          @elements += 1
-          raise LimitError, "SVG has too many elements" if @elements > MAX_SVG_ELEMENTS
+            @elements += 1
+            raise LimitError, "SVG has too many elements" if @elements > MAX_SVG_ELEMENTS
 
-          @attributes += attrs.length + ns.length
-          raise LimitError, "SVG has too many attributes" if @attributes > MAX_SVG_ATTRIBUTES
+            @attributes += attrs.length + ns.length
+            raise LimitError, "SVG has too many attributes" if @attributes > MAX_SVG_ATTRIBUTES
 
-          return unless @root_name.nil?
+            return unless @root_name.nil?
 
-          @root_name = name
-          @root_attributes = attrs.each_with_object({}) do |attr, hash|
-            # Dimensions are security-relevant: only the actual no-namespace
-            # root attributes a browser will use may feed the pixel cap. A
-            # namespaced e:width/e:height must not shadow width/height here
-            # and then be dropped by the sanitizer, leaving a huge output SVG
-            # that metadata claimed was tiny.
-            next unless attr.prefix.to_s.empty? && attr.uri.to_s.empty?
+            @root_name = name
+            @root_attributes =
+              attrs.each_with_object({}) do |attr, hash|
+                # Dimensions are security-relevant: only the actual no-namespace
+                # root attributes a browser will use may feed the pixel cap. A
+                # namespaced e:width/e:height must not shadow width/height here
+                # and then be dropped by the sanitizer, leaving a huge output SVG
+                # that metadata claimed was tiny.
+                next unless attr.prefix.to_s.empty? && attr.uri.to_s.empty?
 
-            hash[attr.localname] = attr.value
+                hash[attr.localname] = attr.value
+              end
+          end
+
+          def end_element_namespace(_name, _prefix = nil, _uri = nil)
+            @depth -= 1
+          end
+
+          # libxml2 reports well-formedness violations here rather than raising;
+          # record the first so scan_svg! can reject on it.
+          def error(message)
+            @parse_error ||= message.to_s.strip
+          end
+
+          def warning(_message)
           end
         end
-
-        def end_element_namespace(_name, _prefix = nil, _uri = nil)
-          @depth -= 1
-        end
-
-        # libxml2 reports well-formedness violations here rather than raising;
-        # record the first so scan_svg! can reject on it.
-        def error(message)
-          @parse_error ||= message.to_s.strip
-        end
-
-        def warning(_message); end
-      end
     end
   end
 end

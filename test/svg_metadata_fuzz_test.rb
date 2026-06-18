@@ -15,11 +15,31 @@ module SafeImage
     CASES_PER_SEED = Integer(ENV.fetch("SAFE_IMAGE_METADATA_FUZZ_CASES", ENV.fetch("SAFE_IMAGE_FUZZ_DOCUMENTS", "125")))
 
     TOKENS = [
-      "<svg", "</svg>", "<g>", "</g>", "<rect", "/>", ">", "=", "'", '"', "&", "&xxe;",
-      "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM 'file:///etc/passwd'> ]>", "<?xml-stylesheet href='http://evil.example/x.css'?>",
-      "xmlns='#{SVG_XMLNS}'", "width='10'", "height='10'", "viewBox='0 0 10 10'", "onload='alert(1)'",
-      "href='javascript:alert(1)'", "fill='url(http://evil.example/x)'", "\x00", "\xC0\xAF".b,
-      "\xEF\xBB\xBF".b, "\u202E"
+      "<svg",
+      "</svg>",
+      "<g>",
+      "</g>",
+      "<rect",
+      "/>",
+      ">",
+      "=",
+      "'",
+      '"',
+      "&",
+      "&xxe;",
+      "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM 'file:///etc/passwd'> ]>",
+      "<?xml-stylesheet href='http://evil.example/x.css'?>",
+      "xmlns='#{SVG_XMLNS}'",
+      "width='10'",
+      "height='10'",
+      "viewBox='0 0 10 10'",
+      "onload='alert(1)'",
+      "href='javascript:alert(1)'",
+      "fill='url(http://evil.example/x)'",
+      "\x00",
+      "\xC0\xAF".b,
+      "\xEF\xBB\xBF".b,
+      "\u202E"
     ].freeze
 
     def test_svg_metadata_and_sanitizer_reject_fuzz_inside_error_hierarchy
@@ -54,14 +74,20 @@ module SafeImage
       cleaned = File.read(path)
       doc = REXML::Document.new(cleaned)
       assert_equal "svg", doc.root&.name, "sanitized non-svg root for #{bytes.inspect}"
-      refute_match(/<!DOCTYPE|<\?(?!xml\s)|<script\b|<foreignObject\b/i, cleaned,
-                   "unsafe markup survived sanitized fuzz case #{bytes.inspect}")
+      refute_match(
+        /<!DOCTYPE|<\?(?!xml\s)|<script\b|<foreignObject\b/i,
+        cleaned,
+        "unsafe markup survived sanitized fuzz case #{bytes.inspect}"
+      )
       walk(doc.root) do |node|
         node.attributes.each_attribute do |attr|
           refute attr.name.to_s.downcase.start_with?("on"),
                  "event attribute #{attr.expanded_name} survived sanitized fuzz case #{bytes.inspect}"
-          refute_match(/(?:javascript|data):/i, attr.value.to_s,
-                       "active URL survived in sanitized attribute #{attr.expanded_name} for #{bytes.inspect}")
+          refute_match(
+            /(?:javascript|data):/i,
+            attr.value.to_s,
+            "active URL survived in sanitized attribute #{attr.expanded_name} for #{bytes.inspect}"
+          )
         end
       end
     rescue SafeImage::Error
@@ -111,7 +137,7 @@ module SafeImage
         %(<svg xmlns="#{SVG_XMLNS}" width="10" height="10"><rect></svg></rect>),
         %(<svg xmlns="#{SVG_XMLNS}" width="&bad;" height="10"/>),
         %(<svg xmlns="#{SVG_XMLNS}" width="10" height="10"><![CDATA[unterminated),
-        %(<html><body>nope</body></html>)
+        "<html><body>nope</body></html>"
       ].sample(random: rng)
     end
 
@@ -121,13 +147,20 @@ module SafeImage
 
     def child_snippet(rng)
       case rng.rand(7)
-      when 0 then %(<rect width="10" height="10" fill="url(#g)"/> )
-      when 1 then %(<script>alert(1)</script>)
-      when 2 then %(<g onload="alert(1)" y:onload="1" xmlns:y="#{SVG_XMLNS}"/>)
-      when 3 then %(<style>.ok{fill:url(#g)} @import "//evil.example/x.css";</style>)
-      when 4 then %(<text>#{xml_text(random_token_soup(rng))}</text>)
-      when 5 then %(<s:rect xmlns:s="#{SVG_XMLNS}" fill="url(http://evil.example/x)"/> )
-      else %(<foreignObject><html xmlns="http://www.w3.org/1999/xhtml"><script>x</script></html></foreignObject>)
+      when 0
+        %(<rect width="10" height="10" fill="url(#g)"/> )
+      when 1
+        "<script>alert(1)</script>"
+      when 2
+        %(<g onload="alert(1)" y:onload="1" xmlns:y="#{SVG_XMLNS}"/>)
+      when 3
+        %(<style>.ok{fill:url(#g)} @import "//evil.example/x.css";</style>)
+      when 4
+        %(<text>#{xml_text(random_token_soup(rng))}</text>)
+      when 5
+        %(<s:rect xmlns:s="#{SVG_XMLNS}" fill="url(http://evil.example/x)"/> )
+      else
+        %(<foreignObject><html xmlns="http://www.w3.org/1999/xhtml"><script>x</script></html></foreignObject>)
       end
     end
 
@@ -140,7 +173,13 @@ module SafeImage
     end
 
     def xml_text(value)
-      value.to_s.b.encode("UTF-8", invalid: :replace, undef: :replace).gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
+      value
+        .to_s
+        .b
+        .encode("UTF-8", invalid: :replace, undef: :replace)
+        .gsub("&", "&amp;")
+        .gsub("<", "&lt;")
+        .gsub(">", "&gt;")
     end
   end
 end

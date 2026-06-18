@@ -18,13 +18,13 @@ module SafeImage
   class TestCase < Minitest::Test
     FIXTURES = File.expand_path("fixtures/images", __dir__)
 
-    JPG = File.join(FIXTURES, "huge.jpg")                  # 8900x8900 JPEG
+    JPG = File.join(FIXTURES, "huge.jpg") # 8900x8900 JPEG
     PNG = File.join(FIXTURES, "large_and_unoptimized.png") # 2032x1312 PNG
-    HEIC = File.join(FIXTURES, "should_be_jpeg.heic")      # 846x1129 HEIC
-    ICO = File.join(FIXTURES, "smallest.ico")              # 1x1 ICO
-    GIF = File.join(FIXTURES, "animated.gif")              # animated GIF
-    WEBP = File.join(FIXTURES, "animated.webp")            # animated WebP
-    JXL = File.join(FIXTURES, "photo.jxl")                 # 400x260 JPEG XL
+    HEIC = File.join(FIXTURES, "should_be_jpeg.heic") # 846x1129 HEIC
+    ICO = File.join(FIXTURES, "smallest.ico") # 1x1 ICO
+    GIF = File.join(FIXTURES, "animated.gif") # animated GIF
+    WEBP = File.join(FIXTURES, "animated.webp") # animated WebP
+    JXL = File.join(FIXTURES, "photo.jxl") # 400x260 JPEG XL
 
     # Pixel caps generous enough for the fixtures above. The cap behaviour
     # itself is exercised in PixelLimitTest.
@@ -105,7 +105,7 @@ module SafeImage
     def gif_save_or_skip
       yield
     rescue SafeImage::UnsupportedFormatError => e
-      raise unless e.message.include?("cannot save GIF")
+      raise unless e.message.match?("cannot save GIF")
       skip "GIF output is not supported by this libvips build: #{e.message}"
     end
 
@@ -113,7 +113,7 @@ module SafeImage
     def jxl_or_skip
       yield
     rescue SafeImage::UnsupportedFormatError => e
-      raise unless e.message.include?("JPEG XL")
+      raise unless e.message.match?("JPEG XL")
       skip "JPEG XL is not supported by this libvips build: #{e.message}"
     end
   end

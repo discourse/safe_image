@@ -16,24 +16,25 @@ module SafeImage
       configure_safe_image(backend: :vips)
       vips_color = SafeImage.dominant_color(tmp_path("v.jpg"))
       im_color = SafeImage.dominant_color(tmp_path("i.jpg"))
-      vips_color.scan(/../).zip(im_color.scan(/../)).each do |v, m|
-        assert_in_delta v.to_i(16), m.to_i(16), 4, "flatten drift (vips=#{vips_color} imagemagick=#{im_color})"
-      end
+      vips_color
+        .scan(/../)
+        .zip(im_color.scan(/../))
+        .each do |v, m|
+          assert_in_delta v.to_i(16), m.to_i(16), 4, "flatten drift (vips=#{vips_color} imagemagick=#{im_color})"
+        end
     end
 
     def test_heic_to_jpeg_no_longer_needs_imagemagick
-      result = heic_or_skip do
-        SafeImage.convert(HEIC, tmp_path("h.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
-      end
+      result =
+        heic_or_skip { SafeImage.convert(HEIC, tmp_path("h.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS) }
 
       assert_equal "libvips-direct", result.backend
       assert_result result, width: 846, height: 1129, format: "jpg"
     end
 
     def test_jxl_to_jpeg_converts_natively
-      result = jxl_or_skip do
-        SafeImage.convert(JXL, tmp_path("x.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
-      end
+      result =
+        jxl_or_skip { SafeImage.convert(JXL, tmp_path("x.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS) }
 
       assert_equal "libvips-direct", result.backend
       assert_result result, width: 400, height: 260, format: "jpg"
@@ -47,9 +48,7 @@ module SafeImage
     end
 
     def test_ico_input_fails_closed_on_the_vips_backend
-      assert_raises(UnsupportedFormatError) do
-        SafeImage.convert(ICO, tmp_path("o.png"), format: "png")
-      end
+      assert_raises(UnsupportedFormatError) { SafeImage.convert(ICO, tmp_path("o.png"), format: "png") }
     end
 
     def test_ico_input_converts_with_the_imagemagick_backend
