@@ -12,34 +12,24 @@ module SafeImage
       case File.extname(path).downcase
       when ".svg"
         info = SvgMetadata.probe(path, max_pixels: max_pixels)
-        Result.build(
+        Result.metadata(
           input: File.expand_path(path),
-          output: nil,
           input_format: "svg",
-          output_format: nil,
           width: info.fetch(:width),
           height: info.fetch(:height),
-          filesize: File.size(path),
           backend: :svg_metadata,
-          duration_ms: info.fetch(:duration_ms),
-          optimizer: nil,
-          tier: :metadata
+          duration_ms: info.fetch(:duration_ms)
         )
       when ".ico"
         # Pure-Ruby directory parse; reports the largest entry's dimensions.
         info = Ico.probe(path, max_pixels: max_pixels)
-        Result.build(
+        Result.metadata(
           input: File.expand_path(path),
-          output: nil,
           input_format: "ico",
-          output_format: nil,
           width: info.fetch(:width),
           height: info.fetch(:height),
-          filesize: File.size(path),
           backend: :ico_metadata,
-          duration_ms: info.fetch(:duration_ms),
-          optimizer: nil,
-          tier: :metadata
+          duration_ms: info.fetch(:duration_ms)
         )
       else
         case config.backend
@@ -47,18 +37,13 @@ module SafeImage
           Processor.new(max_pixels: max_pixels, config: config).probe(path)
         when :imagemagick
           info = ImageMagickBackend.probe(path, max_pixels: max_pixels)
-          Result.build(
+          Result.metadata(
             input: File.expand_path(path),
-            output: nil,
             input_format: info.fetch(:input_format),
-            output_format: nil,
             width: info.fetch(:width),
             height: info.fetch(:height),
-            filesize: File.size(path),
             backend: :imagemagick,
-            duration_ms: info.fetch(:duration_ms),
-            optimizer: nil,
-            tier: :metadata
+            duration_ms: info.fetch(:duration_ms)
           )
         end
       end

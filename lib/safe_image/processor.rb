@@ -18,18 +18,13 @@ module SafeImage
       input = safe_existing_file!(path)
       info = Native.probe(input.to_s, @max_pixels)
       validate_pixels!(info.fetch(:width), info.fetch(:height))
-      Result.build(
+      Result.metadata(
         input: input,
-        output: nil,
         input_format: info.fetch(:format),
-        output_format: nil,
         width: info.fetch(:width),
         height: info.fetch(:height),
-        filesize: File.size(input),
         backend: :vips,
-        duration_ms: info.fetch(:duration_ms),
-        optimizer: nil,
-        tier: :metadata
+        duration_ms: info.fetch(:duration_ms)
       )
     end
 
@@ -43,6 +38,26 @@ module SafeImage
       optimize: false,
       optimize_mode: :lossless
     )
+      input, output, width, height, quality, out_format =
+        prepare_thumbnail_request(
+          input: input,
+          output: output,
+          width: width,
+          height: height,
+          format: format,
+          quality: quality
+        )
+      info =
+        thumbnail_info(input: input, output: output, width: width, height: height, quality: quality, format: out_format)
+      opt_info =
+        optimize_thumbnail_output(output, format: out_format, quality: quality, mode: optimize_mode) if optimize
+
+      thumbnail_result(input: input, output: output, info: info, optimizer: opt_info)
+    end
+
+    private
+
+    def prepare_thumbnail_request(input:, output:, width:, height:, format:, quality:)
       input, output = PathSafety.ensure_distinct_file_paths!(input, output)
       safe_existing_file!(input)
       width = Integer(width)
@@ -57,9 +72,12 @@ module SafeImage
       end
 
       output.dirname.mkpath
-      backend = @config.backend
-      info =
-        if out_format == "jpg" && use_jpegli_for_generated_jpeg?(backend)
+      [input, output, width, height, quality, out_format]
+    end
+
+    def thumbnail_info(input:, output:, width:, height:, quality:, format:)
+      if jpegli_thumbnail?(format)
+        info =
           jpegli_thumbnail(
             input: input,
             output: output,
@@ -68,36 +86,50 @@ module SafeImage
             quality: quality,
             source_format: input.extname.delete_prefix(".").downcase
           )
-        else
-          case backend
-          when :vips
-            Native.thumbnail(input.to_s, output.to_s, width, height, out_format, quality, @max_pixels)
-          when :imagemagick
-            probe_info = ImageMagickBackend.probe(input.to_s)
-            validate_pixels!(probe_info.fetch(:width), probe_info.fetch(:height))
-            ImageMagickBackend.thumbnail(
-              input: input.to_s,
-              output: output.to_s,
-              width: width,
-              height: height,
-              format: out_format,
-              quality: quality
-            )
-          end
-        end
-
-      opt_info = nil
-      if optimize && OPTIMIZABLE_OUTPUTS.include?(out_format)
-        opt_info =
-          optimize_output(
-            output,
-            mode: optimize_mode,
-            strip_metadata: true,
-            quality: out_format == "jpg" ? quality : nil,
-            assume_upright: true
-          )
+        return info
       end
 
+      case @config.backend
+      when :vips
+        Native.thumbnail(input.to_s, output.to_s, width, height, format, quality, @max_pixels)
+      when :imagemagick
+        imagemagick_thumbnail(
+          input: input,
+          output: output,
+          width: width,
+          height: height,
+          quality: quality,
+          format: format
+        )
+      end
+    end
+
+    def imagemagick_thumbnail(input:, output:, width:, height:, quality:, format:)
+      probe_info = ImageMagickBackend.probe(input.to_s)
+      validate_pixels!(probe_info.fetch(:width), probe_info.fetch(:height))
+      ImageMagickBackend.thumbnail(
+        input: input.to_s,
+        output: output.to_s,
+        width: width,
+        height: height,
+        format: format,
+        quality: quality
+      )
+    end
+
+    def optimize_thumbnail_output(output, format:, quality:, mode:)
+      if OPTIMIZABLE_OUTPUTS.include?(format)
+        optimize_output(
+          output,
+          mode: mode,
+          strip_metadata: true,
+          quality: format == "jpg" ? quality : nil,
+          assume_upright: true
+        )
+      end
+    end
+
+    def thumbnail_result(input:, output:, info:, optimizer:)
       Result.build(
         input: input,
         output: output,
@@ -105,15 +137,13 @@ module SafeImage
         output_format: info.fetch(:output_format),
         width: info.fetch(:width),
         height: info.fetch(:height),
-        backend: backend,
+        backend: @config.backend,
         encoder: info[:encoder],
         duration_ms: info.fetch(:duration_ms),
-        optimizer: opt_info&.fetch(:tools, nil),
+        optimizer: optimizer&.fetch(:tools, nil),
         tier: info[:encoder] == "cjpegli" ? :cjpegli : :thumbnail
       )
     end
-
-    private
 
     def optimize_output(output, **options)
       StagedOutput.replace(output, suffix: ".safe-image#{output.extname}") do |tmp_path|
@@ -124,8 +154,8 @@ module SafeImage
     # cjpegli is an output-quality tool, not a configuration choice: installed
     # means used. It encodes only pixels this gem already decoded, so it is
     # not part of the untrusted-input surface the backend choice controls.
-    def use_jpegli_for_generated_jpeg?(backend)
-      backend == :vips && JpegliBackend.available?
+    def jpegli_thumbnail?(format)
+      @config.backend == :vips && format == "jpg" && JpegliBackend.available?
     end
 
     def jpegli_thumbnail(input:, output:, width:, height:, quality:, source_format:)

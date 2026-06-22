@@ -53,6 +53,19 @@ module SafeImage
         )
       end
 
+      def self.metadata(input:, input_format:, width:, height:, backend:, duration_ms:)
+        build(
+          input: input,
+          input_format: input_format,
+          width: width,
+          height: height,
+          filesize: File.size(input),
+          backend: backend,
+          duration_ms: duration_ms,
+          tier: :metadata
+        )
+      end
+
       def self.result_filesize(input, output)
         path = output || input
         path ? File.size(path) : nil

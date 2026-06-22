@@ -105,18 +105,13 @@ module SafeImage
       def operation_probe(path, max_pixels:)
         path = Pathname.new(path).expand_path.to_s
         info = ImageMagickBackend.probe(path, max_pixels: max_pixels)
-        Result.build(
+        Result.metadata(
           input: path,
-          output: nil,
           input_format: info.fetch(:input_format),
-          output_format: nil,
           width: info.fetch(:width),
           height: info.fetch(:height),
-          filesize: File.size(path),
           backend: :imagemagick,
-          duration_ms: info.fetch(:duration_ms),
-          optimizer: nil,
-          tier: :metadata
+          duration_ms: info.fetch(:duration_ms)
         )
       end
 
