@@ -3,9 +3,9 @@
 require_relative "test_helper"
 
 module SafeImage
-  # The Fiddle binding owns GObject reference counting; a pairing bug shows
-  # up as monotonic RSS growth, not a test failure. Hammer a representative
-  # mix of operations and assert memory stays bounded.
+  # The vips backend now lives in a helper process; this test hammers a
+  # representative mix of operations and asserts the Ruby parent does not grow
+  # monotonically while staging helper requests and parsing responses.
   class BindingLeakTest < TestCase
     ITERATIONS = 50
     ALLOWED_GROWTH_KB = 30_000
@@ -25,14 +25,13 @@ module SafeImage
       assert_operator after - before,
                       :<,
                       ALLOWED_GROWTH_KB,
-                      "RSS grew #{after - before}KB over #{ITERATIONS} iterations; the binding is likely leaking references"
+                      "RSS grew #{after - before}KB over #{ITERATIONS} iterations; helper request handling may be leaking"
     end
 
     private
 
-    # Touches every GValue shape the binding uses: loaders (enum args),
-    # savers (bool/int/flags), stats (matrix read), text + linear (string and
-    # double-array args) and the raw-memory PNG encoder.
+    # Touches the helper-backed paths: loaders, metadata reads, stats, text,
+    # thumbnailing and the raw-memory PNG encoder.
     def exercise
       SafeImage.size(GIF, max_pixels: PNG_PIXELS)
       SafeImage.dominant_color(GIF, max_pixels: PNG_PIXELS)

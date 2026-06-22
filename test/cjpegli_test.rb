@@ -21,7 +21,7 @@ module SafeImage
             max_pixels: PNG_PIXELS
           )
 
-        assert_equal "libvips-direct", result.backend
+        assert_equal "libvips-helper", result.backend
         assert_jpeg_magic tmp_path("native.jpg")
       end
     end
@@ -40,7 +40,7 @@ module SafeImage
       out = tmp_path("converted.jpg")
       result = SafeImage.convert(input: PNG, output: out, format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
 
-      assert_equal "libvips-direct+cjpegli", result.backend
+      assert_equal "libvips-helper+cjpegli", result.backend
       assert_jpeg_magic out
       assert_equal :jpeg, SafeImage.type(out, max_pixels: PNG_PIXELS)
     end

@@ -26,14 +26,14 @@ module SafeImage
     def test_gif_metadata_uses_the_native_loader
       assert_equal :gif, SafeImage.type(GIF, max_pixels: PNG_PIXELS)
       assert_equal [320, 320], SafeImage.size(GIF, max_pixels: PNG_PIXELS)
-      assert_equal "libvips-direct", SafeImage.probe(GIF, max_pixels: PNG_PIXELS).backend
+      assert_equal "libvips-helper", SafeImage.probe(GIF, max_pixels: PNG_PIXELS).backend
     end
 
     def test_jxl_metadata_uses_the_native_loader
       jxl_or_skip do
         assert_equal :jxl, SafeImage.type(JXL)
         assert_equal [400, 260], SafeImage.size(JXL)
-        assert_equal "libvips-direct", SafeImage.probe(JXL).backend
+        assert_equal "libvips-helper", SafeImage.probe(JXL).backend
       end
     end
 

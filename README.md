@@ -12,12 +12,12 @@ mandatory call:
 SafeImage.configure!(backend: :vips, landlock: true)
 ```
 
-The `:vips` backend uses a tiny compiled helper for Landlock-contained
-subprocess execution plus a Fiddle binding for inline Ruby execution. The
-`:imagemagick` backend runs ImageMagick with shell-free command execution and a
-restrictive bundled policy. There are no per-call backend choices and no silent
-fallback from one backend to the other: you pick the decoder for untrusted bytes
-in one place and every operation uses it.
+The `:vips` backend uses a tiny compiled helper for all libvips work; the Ruby
+process never loads libvips. The `:imagemagick` backend runs ImageMagick with
+shell-free command execution and a restrictive bundled policy. There are no
+per-call backend choices and no silent fallback from one backend to the other:
+you pick the decoder for untrusted bytes in one place and every operation uses
+it.
 
 The premise is that hostile image bytes are a lousy thing to spread across
 model callbacks, upload helpers, optimizer wrappers, and hand-built command
@@ -29,12 +29,10 @@ security model and the invariants future changes must preserve.
 
 A small native helper is compiled at gem install time and linked against
 libvips; install the libvips development package (`pkg-config vips` must work)
-in the build environment. At runtime, the inline `:vips` path still dlopens
-`libvips.so.42` through Fiddle when `configure!(backend: :vips)` runs;
-`SAFE_IMAGE_LIBVIPS` overrides that library name authoritatively. libvips' GLib
-warnings about rejected input (e.g. "Not a PNG file") are silenced — failures
-surface as exceptions instead; set `SAFE_IMAGE_VIPS_WARNINGS=1` to restore them
-for debugging. Install the runtime [dependencies](#dependencies) below.
+in the build environment. At runtime, `configure!(backend: :vips)` verifies that
+this helper can start and initialize libvips; all subsequent libvips operations
+run in helper subprocesses whose stderr is captured and reported only on
+structured failures. Install the runtime [dependencies](#dependencies) below.
 
 ```bash
 gem build safe_image.gemspec
@@ -74,7 +72,7 @@ helpers) raises `SafeImage::NotConfiguredError`.
 ```ruby
 SafeImage.configure!(
   backend: :vips,    # required: :vips or :imagemagick — decodes all untrusted bytes
-  landlock: true,    # required: route every operation through the Landlock sandbox
+  landlock: true,    # required: Landlock child helpers/tools when they run
   max_pixels: SafeImage::DEFAULT_MAX_PIXELS # optional: default decompression-bomb ceiling (128MP)
 )
 ```
@@ -82,7 +80,7 @@ SafeImage.configure!(
 Validation is eager, so a misconfigured host fails at boot rather than on the
 first request:
 
-- `backend: :vips` dlopens libvips and raises if it is unavailable
+- `backend: :vips` verifies that the compiled helper can initialize libvips and raises if it is unavailable
 - `backend: :imagemagick` raises if no `magick`/`convert` executable is found
 - `landlock: true` raises if the Landlock sandbox is unavailable
   (`SafeImage.sandbox_available?` works before `configure!`, so a host can
@@ -100,8 +98,8 @@ is decided here and only here.
 
 Choosing a backend:
 
-- `:vips` — the recommended fast path: explicit native loaders, in-process
-  hardening, no subprocess per operation
+- `:vips` — the recommended fast path: explicit native loaders in the compiled
+  helper process, with no libvips loaded into Ruby
 - `:imagemagick` — matches classic ImageMagick `convert` pipelines; also the
   option for hosts without libvips. Formats are decoded by ImageMagick under
   the bundled restrictive policy.
@@ -118,7 +116,7 @@ Debian / Ubuntu:
 
 ```bash
 sudo apt-get install --no-install-recommends \
-  libvips42 imagemagick jpegoptim pngquant oxipng libjpeg-turbo-progs
+  build-essential pkg-config libvips-dev imagemagick jpegoptim pngquant oxipng libjpeg-turbo-progs
 ```
 
 `oxipng` is packaged from Debian 13 / Ubuntu 24.04; on older releases install
@@ -129,7 +127,7 @@ detected at runtime.
 Arch:
 
 ```bash
-sudo pacman -S --needed libvips \
+sudo pacman -S --needed base-devel pkgconf libvips \
   imagemagick jpegoptim pngquant oxipng libjpeg-turbo libjxl
 ```
 
@@ -139,15 +137,15 @@ sudo pacman -S --needed libvips \
 
 | Dependency | Kind | Needed for | Without it |
 | --- | --- | --- | --- |
-| `libvips` runtime library (`libvips.so.42`; Debian: `libvips42` ≥ 8.13) plus development headers/pkg-config at gem build time | required for `backend: :vips` | the fast path for every operation and the compiled Landlock helper | gem install fails without headers; `configure!(backend: :vips)` raises at boot if the runtime library is unavailable |
+| `libvips` runtime library (`libvips.so.42`; Debian: `libvips42` ≥ 8.13) plus development headers/pkg-config at gem build time | required for `backend: :vips` | the fast path for every operation and the compiled helper | gem install fails without headers; `configure!(backend: :vips)` raises at boot if the runtime library is unavailable |
 | ImageMagick (`magick`/`convert`, `identify`) | required for `backend: :imagemagick` | every operation on the `:imagemagick` backend | `configure!(backend: :imagemagick)` raises at boot |
 | `jpegoptim` | required for JPEG `optimize` | lossless JPEG optimisation and metadata stripping | JPEG `optimize` raises in strict mode |
 | `oxipng` | required for PNG `optimize` | lossless PNG optimisation | PNG `optimize` raises in strict mode |
 | `pngquant` | optional | lossy PNG quantisation (`optimize_mode: :lossy`, files < 500KB) | lossy mode silently skips the quantisation pass |
 | `jpegtran` (libjpeg-turbo) | optional | lossless tier of `fix_orientation`; uprighting EXIF-oriented JPEGs in `optimize` | `fix_orientation` falls back to the libvips re-encode tier; `optimize` of an oriented JPEG raises in strict mode (or copies source to output with `strict: false`) |
 | `cjpegli` (libjxl) | optional | higher-quality encoding of generated JPEGs on the `:vips` backend — used automatically when installed | generated JPEGs use the backend's own encoder |
-| `landlock` gem ≥ 0.3 (Linux kernel ≥ 5.13) | required for `landlock: true` | the atomic sandbox around every operation, including fast direct command capture | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
-| `nokogiri` gem | automatic | bounded SVG metadata parser | installed as a gem dependency |
+| `landlock` gem ≥ 0.3 (Linux kernel ≥ 5.13) | required for `landlock: true` | optional sandboxing for child helpers/tools (`safe_image_vips_helper`, ImageMagick, optimizers, jpegtran/cjpegli) | `configure!(landlock: true)` raises at boot; `sandbox_available?` is false |
+| `nokogiri` gem | automatic | bounded SVG metadata parser (not Landlock-contained) | installed as a gem dependency |
 
 The `landlock` gem is intentionally **not** a runtime gem dependency; add
 `gem "landlock", ">= 0.3"` to the host application's Gemfile if you want
@@ -193,7 +191,7 @@ require "safe_image"
 %w[magick identify jpegoptim oxipng pngquant jpegtran cjpegli].each do |tool|
   puts format("%-10s %s", tool, SafeImage::Runner.available?(tool) ? "ok" : "missing")
 end
-puts format("%-10s %s", "libvips", SafeImage::VipsGlue.available? ? "ok" : "unavailable")
+puts format("%-10s %s", "vips-helper", SafeImage::Native.available? ? "ok" : "unavailable")
 puts format("%-10s %s", "sandbox", SafeImage.sandbox_available? ? "ok" : "unavailable")
 ```
 
@@ -216,8 +214,8 @@ SafeImage::Result[
   width:,
   height:,
   filesize:,
-  backend:,        # e.g. "libvips-direct", "imagemagick", "cjpegli",
-                   #      "libvips-direct+cjpegli"
+  backend:,        # e.g. "libvips-helper", "imagemagick", "cjpegli",
+                   #      "libvips-helper+cjpegli"
   duration_ms:,
   optimizer:       # optimizer tool list for thumbnail path, otherwise nil
 ]
@@ -294,7 +292,9 @@ SafeImage.size("icon.svg")         # => [120, 80]
 SVG metadata is handled by a dedicated parser, not ImageMagick or libvips. It is
 limited to local `.svg` files, caps input size/tree depth/element/attribute
 counts, rejects `DOCTYPE` and non-XML processing instructions, requires an `<svg>`
-root, and derives dimensions from numeric `width`/`height` or `viewBox`.
+root, and derives dimensions from numeric `width`/`height` or `viewBox`. This
+bounded Nokogiri/libxml2 parse happens in the Ruby process; `landlock: true`
+contains child image helpers/tools, not SVG metadata parsing itself.
 
 #### `SafeImage.orientation(path, max_pixels: nil)`
 
@@ -489,10 +489,11 @@ SafeImage.fetch_remote("https://example.com/image.jpg", max_bytes: 10.megabytes)
 end
 ```
 
-With `landlock: true` configured, the network fetch itself is not put inside
-the Landlock worker because the worker denies network access. The downloaded
-tempfile is then passed through the normal Safe Image local image APIs, so
-decoding still uses the same sandboxed image-processing path.
+With `landlock: true` configured, the network fetch itself is not sandboxed: it
+needs network access, while the image-processing child helpers/tools deliberately
+do not get it. The downloaded tempfile is then passed through the normal Safe
+Image local APIs, so raster decoding and transform subprocesses still use the
+configured Landlock containment.
 
 ### Generating images
 
@@ -542,7 +543,7 @@ SafeImage.resize(input: "upload.jpg", output: "thumb.jpg", width: 600, height: 4
 
 `resize`, `crop` and `downsize` run on the configured backend:
 
-- `:vips` — the direct libvips path; formats outside the native loader
+- `:vips` — the helper-backed libvips path; formats outside the native loader
   allowlist (ICO input) fail closed
 - `:imagemagick` — matches classic `convert` thumbnail pipelines
   (`-thumbnail`, catrom interpolation, unsharp, sRGB profile); configure this
@@ -615,7 +616,7 @@ SafeImage.fix_orientation(input: "upload.jpg", output: "oriented.jpg")
 Extracts the largest ICO entry and writes PNG. On the `:vips` backend no
 ImageMagick is involved: the container and legacy DIB payloads (1/4/8/24/32bpp
 BI_RGB plus the AND mask) are parsed in pure Ruby with explicit bounds checks,
-and pixels are encoded through the hardened native libvips path. Embedded PNG
+and pixels are encoded through the hardened libvips helper. Embedded PNG
 payloads are re-encoded — never copied through verbatim — and their pixel cap
 is enforced from the IHDR before any decoder runs. On the `:imagemagick`
 backend the conversion runs through ImageMagick's ico decoder under the
@@ -743,12 +744,12 @@ What it does:
 - starts external commands with an allowlisted environment, private temp/home/cache
   directories, bounded stdout/stderr, and process-group timeout cleanup
 - uses explicit libvips loaders selected from allowlisted extensions
-- enables libvips' untrusted-operation block in-process (deliberately
+- enables libvips' untrusted-operation block inside the helper (deliberately
   re-enabling only the libjxl loader/saver, which libvips tags untrusted,
   because JPEG XL is part of the supported input surface)
-- blocks libvips ImageMagick loader classes in the libvips binding, which
-  itself exposes only the operations the gem invokes
-- disables libvips cache by default in-process
+- blocks libvips ImageMagick loader classes in the helper, which exposes only
+  the operations the gem invokes
+- disables libvips cache inside the helper
 - strips metadata on generated images where applicable
 - rejects symlinked local input/output paths and symlinked path components for
   untrusted file-processing paths
@@ -797,15 +798,15 @@ So the intended posture is:
 
 - without Landlock: hardened, centralized image processing with the major
   ImageMagick delegate/pseudo-protocol foot-guns removed
-- with Landlock: the same hardening plus a real containment boundary around all
-  public operations
+- with Landlock: the same hardening plus a containment boundary around child
+  helpers/tools that parse or transform raster bytes
 
 Do not describe non-sandboxed operation as making hostile images safe. The honest
 claim is defense-in-depth, not immunity.
 
-### Atomic Landlock sandboxing
+### Optional Landlock containment
 
-Landlock support is optional, but atomic once configured.
+Landlock support is optional, but fail-closed once configured.
 
 ```ruby
 SafeImage.sandbox_available?                       # => true/false, works before configure!
@@ -813,44 +814,38 @@ SafeImage.configure!(backend: :vips, landlock: true) # raises if unavailable
 SafeImage.config.landlock                          # => true
 ```
 
-With `landlock: true`, every public operation routes through the sandbox
-worker:
+With `landlock: true`, Safe Image does **not** proxy public operations through a
+sandboxed Ruby worker. Ruby remains the orchestrator: it validates paths, stages
+outputs, applies format/pixel policy, parses bounded SVG/ICO metadata where
+needed, and launches the actual image-processing helpers/tools.
 
-- `probe`
-- `type`
-- `size`
-- `dimensions`
-- `info`
-- `orientation`
-- `dominant_color`
-- `thumbnail`
-- `optimize`
-- `resize`
-- `crop`
-- `downsize`
-- `convert`
-- `fix_orientation`
-- `convert_favicon_to_png`
-- `frame_count`
-- `animated?`
-- `letter_avatar`
+The Landlock boundary is applied to child processes that do risky native image
+work:
 
-There is no silent fallback once landlock is configured. If sandbox setup or
-a sandboxed command fails, the operation fails.
+- `safe_image_vips_helper` for every libvips operation
+- ImageMagick `magick`/`convert`/`identify` commands on the `:imagemagick` backend
+- optimizer tools such as `jpegoptim`, `oxipng`, and `pngquant`
+- `jpegtran` and `cjpegli` when those optional paths are used
 
-The sandbox grants read/write access only to the paths inferred from the
-operation arguments, plus runtime/library paths and temporary directories needed
-by Ruby, libvips, ImageMagick, and optimizer tools. Worker processes inherit the
-parent's backend and pixel-ceiling configuration; landlock is forced off
-inside the worker so sandboxed operations never nest.
+There is no silent fallback once Landlock is configured. If sandbox setup or a
+sandboxed helper/tool fails, the operation fails.
 
-For the `:vips` backend, common raster operations are served by the compiled
-`safe_image_vips_helper` executable under `Landlock.exec`. The parent performs
-Ruby-level path validation and builds a per-call filesystem policy; the helper
-then initializes libvips, applies the same loader/operation allowlist and pixel
-cap as the inline Fiddle path, writes a structured JSON response, and exits.
-Operations outside that native surface fall back to a fresh sandboxed Ruby
-worker per call.
+Each child process receives only the explicit read/write grants for that call,
+plus runtime/library/font/temp paths needed by the helper or tool. The network is
+denied for those children; remote fetching happens in Ruby before the downloaded
+tempfile is handed back to the local image APIs.
+
+For the `:vips` backend, raster operations are executed by the compiled
+`safe_image_vips_helper` executable. The Ruby process performs path validation and
+orchestration, then the helper initializes libvips in its own process, applies the
+loader/operation allowlist and pixel cap, writes a structured JSON response, and
+exits. With Landlock enabled, the helper process itself is launched inside the
+per-call filesystem policy.
+
+SVG metadata is the deliberate exception: it is bounded and non-rendering, but it
+is parsed by Nokogiri/libxml2 in the Ruby process and is not Landlock-contained by
+Safe Image. If your deployment needs a hard kernel boundary around SVG parsing as
+well, run Safe Image in a separate application process/container.
 
 ## Development
 
@@ -868,8 +863,8 @@ explanation when that support is missing.
 
 The suite includes golden-output checks, cross-backend parity checks (the
 claim is operation parity, not byte-for-byte output identity across
-ImageMagick/libvips versions), policy-denial checks, and a real-image atomic
-sandbox sweep over the full public operation list.
+ImageMagick/libvips versions), policy-denial checks, and Landlock sweeps over
+helper/tool execution paths.
 
 Gem packaging uses the standard Bundler tasks (`rake build`, `rake install`).
 Releases: bump `SafeImage::VERSION`, merge to `main`, and CI publishes the

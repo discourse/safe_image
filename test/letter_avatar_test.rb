@@ -10,7 +10,7 @@ module SafeImage
       result = SafeImage.letter_avatar(output: tmp_path("avatar.png"), size: 360, background_rgb: BG, letter: "S")
 
       assert_result result, width: 360, height: 360, format: "png"
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
     end
 
     def test_imagemagick_backend_renders

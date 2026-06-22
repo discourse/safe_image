@@ -16,7 +16,7 @@ module SafeImage
 
     def probe(path)
       input = safe_existing_file!(path)
-      info = Native.probe(input.to_s)
+      info = Native.probe(input.to_s, @max_pixels)
       validate_pixels!(info.fetch(:width), info.fetch(:height))
       Result.build(
         input: input,
@@ -116,7 +116,7 @@ module SafeImage
     private
 
     def optimize_output(output, **options)
-      AtomicOutput.replace(output, suffix: ".safe-image#{output.extname}") do |tmp_path|
+      StagedOutput.replace(output, suffix: ".safe-image#{output.extname}") do |tmp_path|
         Optimizer.optimize(input: output, output: tmp_path, **options)
       end
     end

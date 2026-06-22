@@ -16,17 +16,19 @@ Safe Image assumes image input may be attacker-controlled. The library is design
 - explicit libvips loader selection for supported raster formats, with
   libvips' untrusted-operation block enabled and the ImageMagick loader
   classes blocked by name
-- a runtime libvips binding (Fiddle) and compiled Landlock helper that expose only the specific
-  operations the gem invokes — there is no generic operation access
+- a compiled libvips helper process that exposes only the specific operations
+  the gem invokes — there is no generic operation access and the Ruby process
+  never loads libvips
 - no silent fallback from libvips to generic ImageMagick decoding; the
   backend is a single explicit `SafeImage.configure!` decision and formats it
   cannot decode fail closed
 - decompression-bomb ceilings enforced from container/header metadata before
   any pixel decode (128MP default, plus dedicated SVG and ICO caps)
 - restrictive ImageMagick policy disabling delegates, filters, `@file`, remote URL coders, Ghostscript-backed formats, and dangerous pseudo-formats
-- bounded SVG metadata probing (Nokogiri SAX with explicit byte/structure caps)
-  and pure-Ruby ICO directory/DIB parsing; extracted ICO pixels are re-encoded
-  through libvips and embedded payload bytes are never copied through verbatim
+- bounded SVG metadata probing (Nokogiri SAX with explicit byte/structure caps,
+  not Landlock-contained by Safe Image) and pure-Ruby ICO directory/DIB parsing;
+  extracted ICO pixels are re-encoded through libvips and embedded payload bytes
+  are never copied through verbatim
 - letter avatar text rendering escapes the user-derived glyph before Pango
   markup parsing, and fonts come from an allowlist (the default font is
   bundled with the gem)
@@ -37,23 +39,29 @@ Safe Image assumes image input may be attacker-controlled. The library is design
 One deliberate exception to libvips' untrusted-operation block: the libjxl
 loader and saver are re-enabled because JPEG XL is part of the supported
 input surface. JXL inputs still pass extension routing, the pixel cap, and
-(optionally) the Landlock sandbox, but libjxl does parse attacker-controlled
-bytes in-process like the other raster decoders below.
+(optionally) Landlock containment around the helper process, but libjxl does
+parse attacker-controlled bytes inside that helper like the other raster
+decoders below.
 
 ## Non-goals
 
-Safe Image does not claim that parsing hostile images in-process is memory-safe.
-Raster decoders such as libjpeg, libpng, libwebp, libheif, libjxl, libnsgif,
-libvips loaders, and ImageMagick coders still parse attacker-controlled bytes;
-so does Nokogiri/libxml2 for bounded SVG metadata. A parser or decoder
+Safe Image does not claim that parsing hostile images is memory-safe. Raster
+decoders such as libjpeg, libpng, libwebp, libheif, libjxl, libnsgif, libvips
+loaders, and ImageMagick coders still parse attacker-controlled bytes; so does
+Nokogiri/libxml2 for bounded SVG metadata. A parser or decoder
 memory-corruption bug or pathological resource-consumption bug is still possible.
+When `landlock: true` is configured, Safe Image contains child helpers/tools; it
+does not put Ruby orchestration or Nokogiri SVG parsing behind a Landlock
+boundary.
 
 The honest claim is defense-in-depth:
 
 - without Landlock: centralized and hardened image processing with major delegate/protocol/policy foot-guns removed
-- with Landlock: the same hardening plus a kernel containment boundary around subprocess-based public operations
+- with Landlock: the same hardening plus a kernel containment boundary around subprocess helpers/tools
 
-If your deployment needs a hard isolation boundary, configure `landlock: true` and run image processing away from your main web worker process.
+If your deployment needs a hard isolation boundary around the Ruby process as well,
+run image processing away from your main web worker process (for example in a
+separate service/container).
 
 ## Reporting vulnerabilities
 

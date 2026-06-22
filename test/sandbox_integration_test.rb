@@ -4,10 +4,8 @@ require "fileutils"
 require_relative "test_helper"
 
 module SafeImage
-  # Runs the whole public API with the Landlock sandbox configured to prove
-  # every operation works through atomic sandboxed child processes. Sandbox
-  # results cross a process boundary, so hashes may come back with string
-  # keys where the inline path uses symbols.
+  # Runs the public API with Landlock configured to prove helper/tool child
+  # processes still work with explicit per-call sandbox grants.
   class SandboxIntegrationTest < TestCase
     def setup
       super

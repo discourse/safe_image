@@ -226,7 +226,9 @@ module SafeImage
                 "-outfile",
                 tmp_path,
                 input
-              ]
+              ],
+              read: [input],
+              write: [tmp_path, File.dirname(tmp_path)]
             )
             Native.probe(tmp_path)
           end

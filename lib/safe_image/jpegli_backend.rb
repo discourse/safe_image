@@ -41,7 +41,7 @@ module SafeImage
     end
 
     def encode_generated_jpeg(output:, quality: DEFAULT_QUALITY, chroma_subsampling: :auto, input_format: nil)
-      AtomicOutput.with_temp_path_near(output, suffix: ".safe-image.png") do |tmp_path|
+      StagedOutput.with_temp_path_near(output, suffix: ".safe-image.png") do |tmp_path|
         decoded = yield tmp_path
         source_format = input_format || decoded.fetch(:input_format)
         encode(
@@ -74,7 +74,7 @@ module SafeImage
       chroma_subsampling = validate_chroma_subsampling!(chroma_subsampling, input_format: input_format)
 
       info =
-        AtomicOutput.replace(output_path, suffix: ".cjpegli.jpg") do |tmp_path|
+        StagedOutput.replace(output_path, suffix: ".cjpegli.jpg") do |tmp_path|
           argv = [
             "cjpegli",
             input.to_s,
@@ -85,9 +85,9 @@ module SafeImage
           Runner.run!(argv, timeout: timeout, read: [input.to_s], write: [output_path.dirname.to_s])
           raise Error, "cjpegli did not create output" unless tmp_path.file? && File.size(tmp_path).positive?
 
-          # cjpegli works without libvips; fall back to identify for the
-          # output dimensions when the native header read is unavailable.
-          info = VipsGlue.available? ? Native.probe(tmp_path.to_s) : ImageMagickBackend.probe(tmp_path.to_s)
+          # cjpegli works without libvips in the Ruby process; fall back to
+          # identify when the helper/native header read is unavailable.
+          info = Native.available? ? Native.probe(tmp_path.to_s) : ImageMagickBackend.probe(tmp_path.to_s)
           {
             input_format: input_format,
             output_format: "jpg",

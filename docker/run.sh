@@ -1,7 +1,7 @@
 #!/bin/bash
 # Runs the test suite inside a Debian bookworm container against the stock
-# packaged libvips (8.14) with no toolchain installed, validating both the
-# oldest supported libvips and the no-compile gem install.
+# packaged libvips (8.14), validating both the oldest supported libvips and
+# native-helper build/install.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

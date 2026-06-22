@@ -5,7 +5,7 @@ require_relative "test_helper"
 
 module SafeImage
   class PublicApiLandlockConsistencyTest < TestCase
-    def test_safe_image_errors_preserve_class_across_sandbox_boundary
+    def test_safe_image_errors_preserve_class_across_landlock_modes
       each_landlock_mode do
         svg =
           write_tmp("masked.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><mask id="m"/></svg>')
@@ -18,7 +18,7 @@ module SafeImage
       end
     end
 
-    def test_info_shape_preserves_symbols_across_sandbox_boundary
+    def test_info_shape_preserves_symbols_across_landlock_modes
       each_landlock_mode do
         info = SafeImage.info(PNG, max_pixels: PNG_PIXELS)
 

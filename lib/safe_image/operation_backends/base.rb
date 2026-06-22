@@ -60,7 +60,7 @@ module SafeImage
       # Writes via a sibling tempfile and renames into place so callers never
       # observe a partially-written destination.
       def write_through_tempfile(output)
-        AtomicOutput.replace(output, suffix: ".safe-image#{File.extname(output)}") { |tmp_path| yield tmp_path }
+        StagedOutput.replace(output, suffix: ".safe-image#{File.extname(output)}") { |tmp_path| yield tmp_path }
       end
 
       def result_from_info(input, output, info, backend, tier: nil, optimizer: nil)

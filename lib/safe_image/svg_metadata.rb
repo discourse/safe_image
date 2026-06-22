@@ -219,8 +219,8 @@ module SafeImage
     end
 
     # Loaded on first SVG use, not at file load: keeping the XML library off the
-    # hot path of every non-SVG operation (and every sandbox worker boot) where
-    # it would otherwise be paid for nothing.
+    # hot path of every non-SVG operation where it would otherwise be paid for
+    # nothing.
     def require_nokogiri
       require "nokogiri"
     end

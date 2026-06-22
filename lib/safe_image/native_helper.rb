@@ -8,16 +8,28 @@ module SafeImage
   module NativeHelper
     module_function
 
-    HELPER = File.expand_path("safe_image_vips_helper", __dir__)
+    DEFAULT_HELPER = File.expand_path("safe_image_vips_helper", __dir__).freeze
+    HELPER = ENV.fetch("SAFE_IMAGE_VIPS_HELPER", DEFAULT_HELPER).freeze
+    STDERR_TAIL_BYTES = 2000
 
     def available?
-      File.executable?(HELPER)
+      verify!
+      true
+    rescue Error, CommandError, LoadError
+      false
     end
 
     def ensure_available!
-      return if available?
+      return if File.executable?(HELPER)
 
       raise VipsUnavailableError, "compiled safe_image_vips_helper is missing or not executable: #{HELPER}"
+    end
+
+    def verify!
+      return true if @verified
+
+      call!("version", sandbox: false)
+      @verified = true
     end
 
     def probe(path, max_pixels)
@@ -66,6 +78,24 @@ module SafeImage
       call!("convert", input: input, output: output, format: format, quality: quality, max_pixels: max_pixels)
     end
 
+    def png_from_rgba(raw_input, width, height, output)
+      call!("png-from-rgba", raw_input: raw_input, width: width, height: height, output: output)
+    end
+
+    def letter_avatar(output, size, red, green, blue, markup, font, fontfile)
+      call!(
+        "letter-avatar",
+        output: output,
+        size: size,
+        red: red,
+        green: green,
+        blue: blue,
+        markup: markup,
+        font: font,
+        fontfile: fontfile
+      )
+    end
+
     def dominant_color(path, max_pixels)
       call!("dominant-color", input: path, max_pixels: max_pixels).fetch(:value)
     end
@@ -78,9 +108,8 @@ module SafeImage
       call!("orientation", input: path, max_pixels: max_pixels).fetch(:value)
     end
 
-    def call!(command, **options)
+    def call!(command, sandbox: SafeImage.sandbox?, **options)
       ensure_available!
-      require "landlock"
 
       Dir.mktmpdir("safe-image-vips-helper-") do |tmpdir|
         response = File.join(tmpdir, "response.json")
@@ -93,32 +122,26 @@ module SafeImage
 
         stdout = stderr = nil
         status = nil
-        begin
-          result =
-            Sandbox.landlock_capture!(
-              argv,
-              read:
-                Sandbox.existing_paths(
-                  [*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]
-                ),
-              write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
-              execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
-              env: Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1"),
-              unsetenv_others: true,
-              bind_tcp: landlock_abi >= 4 ? [1] : [],
-              scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : [],
-              max_output_bytes: Runner::MAX_OUTPUT_BYTES,
-              truncate_output: false
-            )
-          stdout = result.stdout if result.respond_to?(:stdout)
-          stderr = result.stderr if result.respond_to?(:stderr)
-          status = result.status if result.respond_to?(:status)
-        rescue Sandbox.landlock_command_error => e
-          stdout = e.stdout
-          stderr = e.stderr
-          status = e.status
-          payload = read_response(response, stderr: stderr)
-          raise_helper_error(payload, status, command, stderr: stderr, stdout: stdout)
+        if sandbox
+          begin
+            stdout, stderr, status = run_sandboxed!(argv, tmpdir, options)
+          rescue Sandbox.landlock_command_error => e
+            stdout = e.stdout
+            stderr = e.stderr
+            status = e.status
+            payload = read_response(response, stderr: stderr)
+            raise_helper_error(payload, status, command, stderr: stderr, stdout: stdout)
+          end
+        else
+          begin
+            stdout, stderr, status = run_process!(argv, tmpdir)
+          rescue CommandError => e
+            stdout = e.stdout
+            stderr = e.stderr
+            status = e.status
+            payload = read_response(response, stderr: stderr)
+            raise_helper_error(payload, status, command, stderr: stderr, stdout: stdout)
+          end
         end
 
         payload = read_response(response, stderr: stderr)
@@ -130,8 +153,50 @@ module SafeImage
       raise Error, "landlock sandbox requested but the landlock gem is unavailable"
     end
 
+    def run_process!(argv, tmpdir)
+      stdout, stderr = Runner.run_process!(argv, helper_env(tmpdir), timeout: Runner::DEFAULT_TIMEOUT)
+      [stdout, stderr, nil]
+    end
+
+    def run_sandboxed!(argv, tmpdir, options)
+      require "landlock"
+
+      result =
+        Sandbox.landlock_capture!(
+          argv,
+          read:
+            Sandbox.existing_paths([*Sandbox.default_read_paths, *Sandbox.runtime_read_paths, *read_paths(options)]),
+          write: Sandbox.existing_paths([tmpdir, *write_paths(options)]),
+          execute: Sandbox.existing_paths([File.dirname(HELPER), *Sandbox.default_execute_paths]),
+          env: helper_env(tmpdir),
+          unsetenv_others: true,
+          bind_tcp: landlock_abi >= 4 ? [1] : [],
+          scope: landlock_abi >= 6 ? %i[abstract_unix_socket signal] : [],
+          timeout: Runner::DEFAULT_TIMEOUT,
+          rlimits: Sandbox::DEFAULT_RLIMITS,
+          seccomp_deny_network: true,
+          max_output_bytes: Runner::MAX_OUTPUT_BYTES,
+          truncate_output: false
+        )
+      stdout = result.stdout if result.respond_to?(:stdout)
+      stderr = result.stderr if result.respond_to?(:stderr)
+      status = result.status if result.respond_to?(:status)
+      [stdout, stderr, status]
+    end
+
+    def helper_env(tmpdir)
+      Runner.command_env(tmpdir).merge("SAFE_IMAGE_SANDBOX_CHILD" => "1")
+    end
+
     def landlock_abi
       @landlock_abi ||= Landlock.abi_version
+    end
+
+    def tail(value)
+      text = value.to_s
+      return nil if text.empty?
+
+      text.bytesize > STDERR_TAIL_BYTES ? text.byteslice(-STDERR_TAIL_BYTES, STDERR_TAIL_BYTES) : text
     end
 
     def read_response(path, stderr: nil)
@@ -141,14 +206,14 @@ module SafeImage
         ok: false,
         error: "CommandError",
         message: "native vips helper did not write a response",
-        stderr_tail: SandboxProtocol.tail(stderr)
+        stderr_tail: tail(stderr)
       }
     rescue JSON::ParserError => e
       {
         ok: false,
         error: "CommandError",
         message: "native vips helper wrote invalid JSON: #{e.message}",
-        stderr_tail: SandboxProtocol.tail(stderr)
+        stderr_tail: tail(stderr)
       }
     end
 
@@ -162,7 +227,7 @@ module SafeImage
           end
         )
       original_class = payload[:error].to_s
-      stderr_tail = payload[:stderr_tail] || SandboxProtocol.tail(stderr)
+      stderr_tail = payload[:stderr_tail] || tail(stderr)
       case original_class
       when "LimitError"
         raise LimitError.new(message, original_error_class: original_class, stderr_tail: stderr_tail)
@@ -200,7 +265,7 @@ module SafeImage
     end
 
     def read_paths(options)
-      [options[:input]].compact
+      [options[:input], options[:raw_input], options[:fontfile]].compact.reject(&:empty?)
     end
 
     def write_paths(options)

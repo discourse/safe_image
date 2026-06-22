@@ -3,7 +3,7 @@
 require_relative "test_helper"
 
 module SafeImage
-  # The native extension validates its arguments before touching libvips.
+  # The native helper wrapper validates arguments before spawning libvips.
   class NativeValidationTest < TestCase
     def test_thumbnail_rejects_zero_width
       assert_raises(ArgumentError) { Native.thumbnail(JPG, tmp_path("out.jpg"), 0, 10, "jpg", 85, nil) }

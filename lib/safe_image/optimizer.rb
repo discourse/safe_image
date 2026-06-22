@@ -42,7 +42,7 @@ module SafeImage
       input, output = PathSafety.ensure_distinct_file_paths!(input, output)
       ext = normalized_extension(input)
 
-      AtomicOutput.replace(output, suffix: ".safe-image.#{ext}") do |tmp_path|
+      StagedOutput.replace(output, suffix: ".safe-image.#{ext}") do |tmp_path|
         FileUtils.cp(input, tmp_path)
         optimize_working_file!(
           tmp_path,
@@ -124,7 +124,7 @@ module SafeImage
         argv << (strip_metadata ? "--strip-all" : "--strip-none")
         argv << "--max=#{Integer(quality)}" if quality
         argv << path.to_s
-        Runner.run!(argv, timeout: timeout)
+        Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [path.to_s, File.dirname(path.to_s)])
         state[:tools] << "jpegoptim"
       else
         raise Error, "jpegoptim is required for strict JPEG optimisation" if strict
@@ -142,13 +142,13 @@ module SafeImage
 
     def pngquant!(path, state, quality:, timeout:, strict:)
       if Runner.available?("pngquant")
-        AtomicOutput.with_temp_path_near(path, suffix: ".pngquant.png") do |tmp_path|
+        StagedOutput.with_temp_path_near(path, suffix: ".pngquant.png") do |tmp_path|
           argv = ["pngquant", "--force", "--skip-if-larger", "--output", tmp_path.to_s]
           argv << "--quality=#{quality}" if quality # e.g. "65-90"
           argv << path.to_s
           skipped = false
           begin
-            Runner.run!(argv, timeout: timeout)
+            Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [tmp_path.to_s, File.dirname(tmp_path.to_s)])
           rescue CommandError => e
             # 98: --skip-if-larger declined the result; 99: --quality not met.
             # Both mean "keep the original", not a failure — and the pre-created
@@ -171,7 +171,7 @@ module SafeImage
         argv = %w[oxipng --quiet -o 3]
         argv.concat(["--strip", strip_metadata ? "safe" : "none"])
         argv << path.to_s
-        Runner.run!(argv, timeout: timeout)
+        Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [path.to_s, File.dirname(path.to_s)])
         state[:tools] << "oxipng"
       else
         raise Error, "oxipng is required for strict PNG optimisation" if strict
@@ -223,19 +223,23 @@ module SafeImage
     # the fallback trimmed.
     def upright_working_file!(path, orientation, timeout:)
       transform = JPEGTRAN_OPERATIONS.fetch(orientation)
-      AtomicOutput.with_temp_path_near(path, suffix: ".jpegtran.jpg") do |tmp_path|
+      StagedOutput.with_temp_path_near(path, suffix: ".jpegtran.jpg") do |tmp_path|
         trimmed = false
         begin
           Runner.run!(
             ["jpegtran", "-copy", "none", "-perfect", *transform, "-outfile", tmp_path.to_s, path.to_s],
-            timeout: timeout
+            timeout: timeout,
+            read: [path.to_s],
+            write: [tmp_path.to_s, File.dirname(tmp_path.to_s)]
           )
         rescue CommandError => e
           raise unless jpegtran_perfect_reject?(e)
 
           Runner.run!(
             ["jpegtran", "-copy", "none", "-trim", *transform, "-outfile", tmp_path.to_s, path.to_s],
-            timeout: timeout
+            timeout: timeout,
+            read: [path.to_s],
+            write: [tmp_path.to_s, File.dirname(tmp_path.to_s)]
           )
           trimmed = true
         end

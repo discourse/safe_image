@@ -94,8 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   allowlist, all TCP denied on ABI ≥ 4, abstract-unix-socket/signal scopes on
   ABI ≥ 6), and — when the installed `landlock` gem exposes
   `seccomp_deny_network!` — the helper's deny-all-network seccomp filter
-  (blocking sockets of every family, closing the UDP gap the in-process
-  Landlock policy alone leaves open), *before* touching untrusted input, and
+  (blocking sockets of every family), *before* touching untrusted input, and
   exits after the operation. Workers are pooled so N threads run N sandboxed
   operations at once (the single zygote would serialise them): the pool grows
   on demand to `SAFE_IMAGE_ZYGOTE_WORKERS` (default 8) and offered concurrency
@@ -297,18 +296,15 @@ between backends.
 - Graceful operation without libvips: the new `SafeImage::VipsUnavailableError`
   (a subclass of `UnsupportedFormatError`) makes `backend: :auto` route through
   ImageMagick on hosts without the library, while explicit `backend: :vips`
-  calls fail closed. `SafeImage::VipsGlue.available?` reports the state.
+  calls fail closed. `SafeImage::Native.available?` reports the state.
 - `docker/run.sh`: containerised validation against Debian bookworm's packaged
-  libvips 8.14 with no toolchain installed.
+  libvips 8.14 and native-helper build/install.
 
 ### Changed
 
-- **The compiled C extension is gone.** libvips is now bound at runtime
-  through a minimal Fiddle binding (`SafeImage::VipsGlue`) that exposes only
-  the operations the gem invokes. Nothing compiles at gem install time; the
-  only gem dependencies are `fiddle` and `rexml`. Minimum libvips is 8.13
-  (Debian bookworm's 8.14 package is tested); `SAFE_IMAGE_LIBVIPS` overrides
-  the library name.
+- **The compiled C helper owns libvips execution.** libvips is initialized in
+  the bundled helper process, which exposes only the operations the gem invokes.
+  Minimum libvips is 8.13 (Debian bookworm's 8.14 package is tested).
 - All transform defaults are now native-first: `resize`, `crop`, `downsize`,
   `convert` and `thumbnail` default to `backend: :auto` (previously
   ImageMagick for the first three and `:vips` fail-closed for `thumbnail`).
@@ -350,8 +346,8 @@ between backends.
   untrusted-operation block: JPEG XL is part of the supported input surface,
   and inputs still pass extension routing, pixel caps and (optionally) the
   Landlock sandbox.
-- The Fiddle binding doubles as an operation allowlist, and a leak-loop test
-  guards GObject reference handling.
+- The native helper doubles as an operation allowlist, and a leak-loop test
+  guards helper request handling.
 
 ## [0.1.0] - 2026-06-09
 

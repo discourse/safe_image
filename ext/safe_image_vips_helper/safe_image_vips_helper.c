@@ -388,6 +388,14 @@ static void fail_response(const char *response, const char *klass) {
   write_error(response, klass, msg && msg[0] ? msg : "libvips error");
 }
 
+static int cmd_version(options_t *opts) {
+  const char *response = opt_required(opts, "response");
+  char version[32];
+  snprintf(version, sizeof(version), "%d.%d.%d", vips_version(0), vips_version(1), vips_version(2));
+  write_value_string(response, version);
+  return 0;
+}
+
 static int cmd_probe(options_t *opts, double started) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
@@ -790,6 +798,169 @@ static int cmd_dominant_color(options_t *opts) {
   return 0;
 }
 
+static int cmd_png_from_rgba(options_t *opts) {
+  const char *response = opt_required(opts, "response");
+  const char *raw_input = opt_required(opts, "raw-input");
+  const char *output = opt_required(opts, "output");
+  int width = opt_int(opts, "width", 0);
+  int height = opt_int(opts, "height", 0);
+  if (width <= 0 || height <= 0) {
+    write_error(response, "ArgumentError", "width and height must be positive");
+    return 1;
+  }
+  if (width > 4096 || height > 4096) {
+    write_error(response, "LimitError", "rgba buffer dimensions exceed 4096x4096");
+    return 1;
+  }
+
+  gchar *bytes = NULL;
+  gsize length = 0;
+  GError *error = NULL;
+  if (!g_file_get_contents(raw_input, &bytes, &length, &error)) {
+    write_error(response, "InvalidImageError",
+                error ? error->message : "could not read rgba input");
+    if (error) {
+      g_error_free(error);
+    }
+    return 1;
+  }
+
+  gsize expected = (gsize)width * (gsize)height * 4;
+  if (length != expected) {
+    g_free(bytes);
+    write_error(response, "ArgumentError", "rgba buffer must be width*height*4 bytes");
+    return 1;
+  }
+
+  VipsImage *image =
+      vips_image_new_from_memory_copy(bytes, length, width, height, 4, VIPS_FORMAT_UCHAR);
+  g_free(bytes);
+  if (!image) {
+    fail_response(response, "InvalidImageError");
+    return 1;
+  }
+
+  VipsImage *srgb = NULL;
+  if (vips_copy(image, &srgb, "interpretation", VIPS_INTERPRETATION_sRGB, NULL) != 0 ||
+      save_image(srgb, output, "png", 100) != 0) {
+    fail_response(response, "InvalidImageError");
+    VIPS_UNREF(image);
+    VIPS_UNREF(srgb);
+    return 1;
+  }
+
+  write_info(response, "rgba", "png", width, height, 0.0);
+  VIPS_UNREF(image);
+  VIPS_UNREF(srgb);
+  return 0;
+}
+
+static int cmd_letter_avatar(options_t *opts, double started) {
+  const char *response = opt_required(opts, "response");
+  const char *output = opt_required(opts, "output");
+  int size = opt_int(opts, "size", 0);
+  int red = opt_int(opts, "red", -1);
+  int green = opt_int(opts, "green", -1);
+  int blue = opt_int(opts, "blue", -1);
+  const char *markup = opt(opts, "markup");
+  const char *font = opt_required(opts, "font");
+  if (!markup) {
+    markup = "";
+  }
+  const char *fontfile = opt(opts, "fontfile");
+  if (!fontfile) {
+    fontfile = "";
+  }
+
+  if (size < 1 || size > 4096) {
+    write_error(response, "ArgumentError", "size must be 1..4096");
+    return 1;
+  }
+  if (red < 0 || red > 255 || green < 0 || green > 255 || blue < 0 || blue > 255) {
+    write_error(response, "ArgumentError", "background channels must be 0..255");
+    return 1;
+  }
+  if (vips_type_find("VipsOperation", "text") == 0) {
+    write_error(response, "UnsupportedFormatError",
+                "this libvips build has no text renderer (Pango support missing)");
+    return 1;
+  }
+
+  VipsImage *text = NULL, *cropped = NULL, *mask = NULL;
+  VipsImage *blended = NULL, *cast = NULL, *srgb = NULL;
+  if (markup[0] == '\0') {
+    if (vips_black(&mask, size, size, NULL) != 0) {
+      fail_response(response, "InvalidImageError");
+      return 1;
+    }
+  } else {
+    int text_rc;
+    if (fontfile[0] != '\0') {
+      text_rc = vips_text(&text, markup, "font", font, "dpi", 72, "fontfile", fontfile, NULL);
+    } else {
+      text_rc = vips_text(&text, markup, "font", font, "dpi", 72, NULL);
+    }
+    if (text_rc != 0) {
+      fail_response(response, "InvalidImageError");
+      return 1;
+    }
+
+    int text_w = vips_image_get_width(text);
+    int text_h = vips_image_get_height(text);
+    VipsImage *ink = text;
+    if (text_w > size || text_h > size) {
+      int crop_w = text_w < size ? text_w : size;
+      int crop_h = text_h < size ? text_h : size;
+      if (vips_extract_area(text, &cropped, (text_w - crop_w) / 2, (text_h - crop_h) / 2, crop_w,
+                            crop_h, NULL) != 0) {
+        fail_response(response, "InvalidImageError");
+        VIPS_UNREF(text);
+        return 1;
+      }
+      ink = cropped;
+      text_w = crop_w;
+      text_h = crop_h;
+    }
+
+    if (vips_embed(ink, &mask, (size - text_w) / 2, (size - text_h) / 2, size, size, NULL) != 0) {
+      fail_response(response, "InvalidImageError");
+      VIPS_UNREF(text);
+      VIPS_UNREF(cropped);
+      return 1;
+    }
+  }
+
+  double opacity = 204.0 / 255.0;
+  double a[3] = {
+      (255.0 - (double)red) * opacity / 255.0,
+      (255.0 - (double)green) * opacity / 255.0,
+      (255.0 - (double)blue) * opacity / 255.0,
+  };
+  double b[3] = {(double)red, (double)green, (double)blue};
+  if (vips_linear(mask, &blended, a, b, 3, NULL) != 0 ||
+      vips_cast(blended, &cast, VIPS_FORMAT_UCHAR, NULL) != 0 ||
+      vips_copy(cast, &srgb, "interpretation", VIPS_INTERPRETATION_sRGB, NULL) != 0 ||
+      save_image(srgb, output, "png", 100) != 0) {
+    fail_response(response, "InvalidImageError");
+    VIPS_UNREF(text);
+    VIPS_UNREF(cropped);
+    VIPS_UNREF(mask);
+    VIPS_UNREF(blended);
+    VIPS_UNREF(cast);
+    VIPS_UNREF(srgb);
+    return 1;
+  }
+
+  write_info(response, "generated", "png", size, size, now_ms() - started);
+  VIPS_UNREF(text);
+  VIPS_UNREF(cropped);
+  VIPS_UNREF(mask);
+  VIPS_UNREF(blended);
+  VIPS_UNREF(cast);
+  VIPS_UNREF(srgb);
+  return 0;
+}
+
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: %s COMMAND --response PATH ...\n", argv[0]);
@@ -805,7 +976,9 @@ int main(int argc, char **argv) {
   }
   const char *cmd = argv[1];
   int rc;
-  if (strcmp(cmd, "probe") == 0) {
+  if (strcmp(cmd, "version") == 0) {
+    rc = cmd_version(&opts);
+  } else if (strcmp(cmd, "probe") == 0) {
     rc = cmd_probe(&opts, started);
   } else if (strcmp(cmd, "orientation") == 0) {
     rc = cmd_orientation(&opts);
@@ -821,6 +994,10 @@ int main(int argc, char **argv) {
     rc = cmd_convert(&opts, started);
   } else if (strcmp(cmd, "dominant-color") == 0) {
     rc = cmd_dominant_color(&opts);
+  } else if (strcmp(cmd, "png-from-rgba") == 0) {
+    rc = cmd_png_from_rgba(&opts);
+  } else if (strcmp(cmd, "letter-avatar") == 0) {
+    rc = cmd_letter_avatar(&opts, started);
   } else {
     write_error(response, "ArgumentError", "unsupported helper command");
     rc = 2;

@@ -42,20 +42,20 @@ module SafeImage
 
       result = SafeImage.fix_orientation(input: path, output: tmp_path("fixed.jpg"))
 
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
       assert_includes %i[jpegtran_fallback_reencode native_reencode], result.tier
       assert_result result, width: 131, height: 201, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("fixed.jpg"))
     end
 
     # Camera-sized images outgrow libvips' sequential readahead (~512px), so
-    # autorot needs the random-access reload in Native.load_image; without it
-    # every manual-autorot path fails with "VipsJpeg: out of order read".
+    # helper autorot needs the random-access reload; without it every
+    # manual-autorot path fails with "VipsJpeg: out of order read".
     def test_handles_large_oriented_jpegs_outside_the_sequential_window
       path = oriented_jpg("big6.jpg", 6, width: 1021, height: 1023)
 
       result = SafeImage.fix_orientation(input: path, output: tmp_path("big_fixed.jpg"))
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
       assert_result result, width: 1023, height: 1021, format: "jpg"
       assert_equal 1, SafeImage.orientation(tmp_path("big_fixed.jpg"))
 

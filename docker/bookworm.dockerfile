@@ -1,13 +1,13 @@
 # Validates safe_image against the oldest supported distro libvips: Debian
-# bookworm's stock 8.14 package. Deliberately installs NO build-essential,
-# NO pkg-config and NO libvips-dev — the gem must install and run with
-# runtime packages only (the libvips binding is pure Ruby via Fiddle).
+# bookworm's stock 8.14 package. Installs the build toolchain and libvips
+# development headers so gem installation compiles the safe_image_vips_helper
+# binary used by every libvips operation.
 #
 # Build/run from the repository root via docker/run.sh.
 FROM ruby:3.4-slim-bookworm
 
 RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-    libvips42 imagemagick jpegoptim pngquant libjpeg-turbo-progs fonts-dejavu-core \
+    build-essential pkg-config libvips-dev imagemagick jpegoptim pngquant libjpeg-turbo-progs fonts-dejavu-core \
     wget ca-certificates >/dev/null
 
 # oxipng has no bookworm package; static musl build, pinned like
@@ -22,8 +22,9 @@ RUN wget -q "https://github.com/shssoichiro/oxipng/releases/download/v${OXIPNG_V
 COPY . /safe_image
 WORKDIR /safe_image
 
-# Prove the no-toolchain install claim, then run the suite against the
-# installed gem's environment. minitest is pinned to the gemspec line.
+# Install the gem, proving the native helper builds against the oldest
+# supported packaged libvips, then run the suite against the installed gem's
+# environment. minitest is pinned to the gemspec line.
 RUN gem build safe_image.gemspec \
  && gem install ./safe_image-*.gem \
  && gem install --no-document minitest:5.25.4 rake

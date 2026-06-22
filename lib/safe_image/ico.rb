@@ -53,7 +53,7 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
 
       width = height = nil
-      AtomicOutput.replace(output, suffix: ".safe-image.png") do |tmp_path|
+      StagedOutput.replace(output, suffix: ".safe-image.png") do |tmp_path|
         if entry.png
           # Enforce the pixel cap from the IHDR dimensions before the payload
           # reaches a decoder.
@@ -83,14 +83,6 @@ module SafeImage
         height: height,
         duration_ms: (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
       }
-    end
-
-    def dominant_color(path, max_pixels: nil)
-      Tempfile.create(%w[safe-image-ico .png]) do |tmp|
-        tmp.close
-        convert_to_png(path, tmp.path, max_pixels: max_pixels)
-        VipsBackend.dominant_color(tmp.path, max_pixels: max_pixels)
-      end
     end
 
     # -- container parsing ---------------------------------------------------

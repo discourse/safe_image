@@ -7,10 +7,9 @@ require "time"
 require "tmpdir"
 require "uri"
 # net/http and resolv are required lazily inside the methods that fetch, not at
-# load time: requiring them pulls in resolv, which (Ruby 3.4+) reads
-# /etc/resolv.conf eagerly. The Landlock-sandboxed worker loads this file but
-# never performs remote fetches, and on hosts where /etc/resolv.conf is a
-# symlink into /run the sandbox denies that read and the worker dies at boot.
+# load time: remote fetches need network access, while sandboxed image-processing
+# child helpers/tools deliberately do not get it. Keep networking libraries off
+# the load path until a caller uses the remote API.
 
 module SafeImage
   module Remote
@@ -583,9 +582,9 @@ module SafeImage
 
     def validate_downloaded_image!(path, _ext)
       # Always go back through the public local probe path so configured
-      # sandboxing and pixel limits apply uniformly. Remote.fetch itself cannot
-      # run in the worker because it needs network access; once bytes are on
-      # disk, validation must re-enter the normal image-processing boundary.
+      # sandboxing and pixel limits apply uniformly. Remote.fetch itself needs
+      # network access; once bytes are on disk, validation must re-enter the
+      # normal image-processing boundary.
       SafeImage.probe(path)
     end
   end

@@ -6,7 +6,8 @@ module SafeImage
   class ConvertTest < TestCase
     def test_native_convert_flattens_alpha_onto_white_like_imagemagick
       # Native.convert directly: the public path may encode generated JPEGs with
-      # cjpegli when it is installed, and this test pins the vips flatten behaviour.
+      # cjpegli when it is installed, and this test pins the helper/libvips
+      # flatten behaviour.
       Native.convert(PNG, tmp_path("v.jpg"), "jpg", 85, PNG_PIXELS)
 
       configure_safe_image(backend: :imagemagick)
@@ -31,7 +32,7 @@ module SafeImage
           SafeImage.convert(input: HEIC, output: tmp_path("h.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
         end
 
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
       assert_result result, width: 846, height: 1129, format: "jpg"
     end
 
@@ -41,14 +42,14 @@ module SafeImage
           SafeImage.convert(input: JXL, output: tmp_path("x.jpg"), format: "jpg", quality: 85, max_pixels: PNG_PIXELS)
         end
 
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
       assert_result result, width: 400, height: 260, format: "jpg"
     end
 
     def test_gif_to_png_converts_natively
       result = SafeImage.convert(input: GIF, output: tmp_path("g.png"), format: "png", max_pixels: PNG_PIXELS)
 
-      assert_equal "libvips-direct", result.backend
+      assert_equal "libvips-helper", result.backend
       assert_result result, width: 320, height: 320, format: "png"
     end
 

@@ -5,12 +5,12 @@ module SafeImage
     module_function
 
     BASE = {
-      vips: "libvips-direct",
+      vips: "libvips-helper",
       imagemagick: "imagemagick",
       vips_helper: "libvips-helper",
       svg_metadata: "svg-metadata",
       ico_metadata: "ico-metadata",
-      ico_vips: "ico-ruby+libvips",
+      ico_vips: "ico-ruby+libvips-helper",
       jpegtran: "jpegtran"
     }.freeze
 

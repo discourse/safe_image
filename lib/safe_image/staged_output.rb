@@ -9,7 +9,7 @@ module SafeImage
   # path, not an fd, so the helper intentionally creates and closes the tempfile
   # before yielding its path. The temp path is always next to the destination so
   # the final move stays on the same filesystem.
-  module AtomicOutput
+  module StagedOutput
     module_function
 
     def replace(output, suffix: nil)
@@ -40,5 +40,5 @@ module SafeImage
     private_class_method :with_temp_path
   end
 
-  private_constant :AtomicOutput
+  private_constant :StagedOutput
 end

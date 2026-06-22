@@ -5,19 +5,18 @@ require "json"
 require_relative "test_helper"
 
 module SafeImage
-  # The libvips binding loads at runtime, so a host with only ImageMagick
-  # must keep working when configured with backend: :imagemagick — and
-  # configure!(backend: :vips) must fail closed at boot, not on the first
+  # The vips backend runs through the helper executable, so a host without a
+  # working helper must keep working when configured with backend: :imagemagick —
+  # and configure!(backend: :vips) must fail closed at boot, not on the first
   # request. Pure-Ruby paths (SVG, ICO metadata) never depend on libvips.
-  # Exercised in a subprocess with the library override pointed at a name
-  # that cannot resolve.
+  # Exercised in a subprocess with the helper override pointed at a missing file.
   class VipsUnavailableTest < TestCase
     SCRIPT = <<~'RUBY'
       require "safe_image"
       require "json"
 
       out = {}
-      out[:available] = SafeImage::VipsGlue.available?
+      out[:available] = SafeImage::Native.available?
 
       begin
         SafeImage.configure!(backend: :vips, landlock: false)
@@ -51,7 +50,7 @@ module SafeImage
 
     def test_imagemagick_backend_works_without_libvips
       env = {
-        "SAFE_IMAGE_LIBVIPS" => "libsafe-image-no-such-library.so.0",
+        "SAFE_IMAGE_VIPS_HELPER" => File.join(ENV.fetch("TMPDIR", "/tmp"), "safe-image-no-such-helper"),
         "JPG" => JPG,
         "PNG" => PNG,
         "GIF" => GIF,

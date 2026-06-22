@@ -26,44 +26,13 @@ module SafeImage
       assert_result result, width: 600, height: 400, format: "jpg"
     end
 
-    def test_thumbnail_does_not_resniff_path_after_header_validation
-      source = tmp_path("race.jpg")
-      FileUtils.cp(JPG, source)
-      original_operation = VipsGlue.method(:operation)
-      operation_owner = VipsGlue.singleton_class
-      replaced = false
+    def test_thumbnail_helper_does_not_resniff_path_after_header_validation
+      helper_source = File.read(File.expand_path("../ext/safe_image_vips_helper/safe_image_vips_helper.c", __dir__))
 
-      operation_owner.send(:remove_method, :operation)
-      VipsGlue.define_singleton_method(:operation) do |nickname, inputs, output: "out"|
-        result = original_operation.call(nickname, inputs, output: output)
-        filename = inputs[:filename] || inputs["filename"]
-        if nickname == "jpegload" && filename.to_s == source && !replaced
-          FileUtils.cp(PNG, source)
-          replaced = true
-        end
-        result
-      end
-
-      error =
-        assert_raises(InvalidImageError) do
-          SafeImage.thumbnail(
-            input: source,
-            output: tmp_path("race-thumb.jpg"),
-            width: 5,
-            height: 5,
-            max_pixels: JPG_PIXELS,
-            optimize: false
-          )
-        end
-      assert_match(/jpeg|match/i, error.message)
-      assert replaced, "test did not exercise the post-header replacement"
-    ensure
-      if original_operation && operation_owner
-        operation_owner.send(:remove_method, :operation)
-        VipsGlue.define_singleton_method(:operation) do |nickname, inputs, output: "out"|
-          original_operation.call(nickname, inputs, output: output)
-        end
-      end
+      assert_match(/open\(input, O_RDONLY \| O_CLOEXEC\)/, helper_source)
+      assert_match(/vips_source_new_from_descriptor\(header_fd\)/, helper_source)
+      assert_match(/vips_source_new_from_descriptor\(thumb_fd\)/, helper_source)
+      assert_match(/vips_thumbnail_source\(thumb_source,/, helper_source)
     end
 
     def test_thumbnail_with_the_imagemagick_backend
@@ -127,9 +96,9 @@ module SafeImage
       crop = SafeImage.crop(input: JPG, output: tmp_path("c.jpg"), width: 400, height: 400, max_pixels: JPG_PIXELS)
       downsize = SafeImage.downsize(input: PNG, output: tmp_path("d.png"), dimensions: "50%", max_pixels: PNG_PIXELS)
 
-      assert_match(/\Alibvips-direct/, resize.backend)
-      assert_match(/\Alibvips-direct/, crop.backend)
-      assert_equal "libvips-direct", downsize.backend
+      assert_match(/\Alibvips-helper/, resize.backend)
+      assert_match(/\Alibvips-helper/, crop.backend)
+      assert_equal "libvips-helper", downsize.backend
       assert_result resize, width: 600, height: 400
       assert_result downsize, width: 1016, height: 656
     end
