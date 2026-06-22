@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0 - 2026-06-22]
+
+### Changed
+
+- **The `:vips` backend now runs libvips in the bundled native helper process.**
+  Ruby no longer loads libvips into the application process for probing,
+  thumbnailing, converting, orientation, dominant-color, ICO pixel extraction,
+  or letter-avatar generation. The helper exposes only the operations Safe Image
+  calls, blocks unsafe libvips operations/loaders, and fails closed when the
+  helper is unavailable; there is still no fallback from `:vips` to
+  ImageMagick.
+- **Sandboxing now uses the public Landlock API around helper/tool processes.**
+  The previous Ruby zygote/worker sandbox plumbing was removed in favour of
+  simpler process execution with explicit read/write/execute allowlists and the
+  existing rlimits/network-deny posture.
+- **Operation dispatch was simplified.** Transform and metadata operations now
+  dispatch directly to backend operation classes, removing an internal
+  forwarding layer while preserving the public API.
+- **PNG optimization now mirrors Discourse's ordering.** Safe Image runs a
+  lossless PNG optimizer first, then optionally runs `pngquant` for small lossy
+  PNG optimization attempts. `oxipng` remains preferred when installed, with
+  `optipng` accepted as a packaged fallback.
+
+### Added
+
+- Added a shared metadata result builder to keep SVG, ICO, vips, and
+  ImageMagick metadata probe results consistent.
+- Added a `native:build` rake task and made `rake test` build/install the
+  `safe_image_vips_helper` binary before running the test suite.
+
+### Fixed
+
+- Fixed source-tree and CI test runs where `SafeImage.configure!(backend:
+  :vips)` failed because `lib/safe_image/safe_image_vips_helper` had not been
+  built yet.
+- Fixed CI setup order so libvips development headers are installed before
+  bundler/native build steps run.
+- Fixed CI portability by avoiding an apt dependency on unavailable `oxipng`
+  packages; CI now uses packaged `optipng` for PNG lossless optimizer coverage.
+
 ## [0.4.0 - 2026-06-18]
 
 ### Removed (breaking)
