@@ -26,12 +26,28 @@ jobs:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
 
+      - name: Cache oxipng
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/oxipng
+          key: oxipng-10.1.1-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant oxipng
+          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant
           # cjpegli is optional; its tests skip when it is missing.
           sudo apt-get install -y libjxl-tools || true
+          if ! sudo apt-get install -y oxipng; then
+            if [ ! -x "$HOME/.cargo/bin/oxipng" ]; then
+              if ! command -v cargo >/dev/null; then
+                curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+                . "$HOME/.cargo/env"
+              fi
+              cargo install oxipng --version 10.1.1 --locked
+            fi
+            sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
+          fi
           command -v convert identify jpegoptim jpegtran oxipng pngquant
 
       - name: Lint
@@ -52,12 +68,28 @@ jobs:
           ruby-version: "3.4"
           bundler-cache: true
 
+      - name: Cache oxipng
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/oxipng
+          key: oxipng-10.1.1-${{ runner.os }}-${{ runner.arch }}
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant oxipng
+          sudo apt-get install -y libvips-dev imagemagick jpegoptim libjpeg-turbo-progs pngquant
           # cjpegli is optional; its tests skip when it is missing.
           sudo apt-get install -y libjxl-tools || true
+          if ! sudo apt-get install -y oxipng; then
+            if [ ! -x "$HOME/.cargo/bin/oxipng" ]; then
+              if ! command -v cargo >/dev/null; then
+                curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+                . "$HOME/.cargo/env"
+              fi
+              cargo install oxipng --version 10.1.1 --locked
+            fi
+            sudo install -m 0755 "$HOME/.cargo/bin/oxipng" /usr/local/bin/oxipng
+          fi
           command -v convert identify jpegoptim jpegtran oxipng pngquant
 
       - name: Tests
