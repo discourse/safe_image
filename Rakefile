@@ -2,6 +2,7 @@
 
 require "bundler"
 require "rake/testtask"
+require "rbconfig"
 require "shellwords"
 
 begin
@@ -13,10 +14,21 @@ rescue Bundler::BundlerError => error
   exit error.status_code
 end
 
+namespace :native do
+  desc "Build and install the libvips helper used by the vips backend"
+  task :build do
+    ext_dir = "ext/safe_image_vips_helper"
+    sh "cd #{ext_dir.shellescape} && #{RbConfig.ruby.shellescape} extconf.rb"
+    sh "make -C #{ext_dir.shellescape} install"
+  end
+end
+
 Rake::TestTask.new(:test) do |t|
   t.libs << "test"
   t.test_files = FileList["test/**/*_test.rb"]
 end
+
+task test: "native:build"
 
 formattable_ruby_files = FileList["Gemfile", "Rakefile", "*.gemspec", "{lib,test,bench}/**/*.rb"].to_a.freeze
 formattable_c_files = FileList["ext/**/*.{c,h}"].to_a.freeze

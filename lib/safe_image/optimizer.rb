@@ -7,8 +7,8 @@ module SafeImage
     module_function
 
     # pngquant's lossy trial is worthwhile only for small generated PNGs; above
-    # this size the extra decode/quantize pass is comparatively expensive and
-    # oxipng still handles the lossless cleanup.
+    # this size the extra decode/quantize pass is comparatively expensive. The
+    # lossless PNG optimizer still runs for larger PNGs.
     MAX_PNGQUANT_SIZE = 500_000
 
     # EXIF orientation values mapped onto jpegtran's lossless transforms.
@@ -134,10 +134,12 @@ module SafeImage
     end
 
     def optimize_png!(path, state, mode:, strip_metadata:, quality:, timeout:, strict:, before:)
+      # Discourse/image_optim parity: run the lossless PNG optimizer before the
+      # optional lossy pngquant pass.
+      png_lossless_optimizer!(path, state, strip_metadata: strip_metadata, timeout: timeout, strict: strict)
       if mode.to_sym == :lossy && before < MAX_PNGQUANT_SIZE
         pngquant!(path, state, quality: quality, timeout: timeout, strict: strict)
       end
-      oxipng!(path, state, strip_metadata: strip_metadata, timeout: timeout, strict: strict)
     end
 
     def pngquant!(path, state, quality:, timeout:, strict:)
@@ -166,16 +168,30 @@ module SafeImage
       end
     end
 
-    def oxipng!(path, state, strip_metadata:, timeout:, strict:)
+    def png_lossless_optimizer!(path, state, strip_metadata:, timeout:, strict:)
       if Runner.available?("oxipng")
-        argv = %w[oxipng --quiet -o 3]
-        argv.concat(["--strip", strip_metadata ? "safe" : "none"])
-        argv << path.to_s
-        Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [path.to_s, File.dirname(path.to_s)])
-        state[:tools] << "oxipng"
-      else
-        raise Error, "oxipng is required for strict PNG optimisation" if strict
+        oxipng!(path, state, strip_metadata: strip_metadata, timeout: timeout)
+      elsif Runner.available?("optipng")
+        optipng!(path, state, strip_metadata: strip_metadata, timeout: timeout)
+      elsif strict
+        raise Error, "oxipng or optipng is required for strict PNG optimisation"
       end
+    end
+
+    def oxipng!(path, state, strip_metadata:, timeout:)
+      argv = %w[oxipng --quiet -o 3]
+      argv.concat(["--strip", strip_metadata ? "safe" : "none"])
+      argv << path.to_s
+      Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [path.to_s, File.dirname(path.to_s)])
+      state[:tools] << "oxipng"
+    end
+
+    def optipng!(path, state, strip_metadata:, timeout:)
+      argv = %w[optipng -quiet -o2]
+      argv.concat(%w[-strip all]) if strip_metadata
+      argv << path.to_s
+      Runner.run!(argv, timeout: timeout, read: [path.to_s], write: [path.to_s, File.dirname(path.to_s)])
+      state[:tools] << "optipng"
     end
 
     def build_result(format, before, after, state)
@@ -252,7 +268,9 @@ module SafeImage
                          :optimize_jpeg!,
                          :optimize_png!,
                          :pngquant!,
+                         :png_lossless_optimizer!,
                          :oxipng!,
+                         :optipng!,
                          :build_result,
                          :skipped_result,
                          :normalized_extension,

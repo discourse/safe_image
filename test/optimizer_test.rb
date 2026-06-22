@@ -16,14 +16,14 @@ module SafeImage
       assert_file_written output
     end
 
-    def test_optimize_runs_oxipng_on_png
+    def test_optimize_runs_a_lossless_png_optimizer_on_png
       png = tmp_path("down.png")
       output = tmp_path("optimized.png")
       SafeImage.downsize(input: PNG, output: png, dimensions: "50%", max_pixels: PNG_PIXELS)
 
       result = SafeImage.optimize(input: png, output: output, mode: :lossy)
 
-      assert_includes result.fetch(:tools), "oxipng"
+      assert_lossless_png_optimizer_ran(result)
       assert_file_written output
     end
 
@@ -100,7 +100,7 @@ module SafeImage
       result = SafeImage.optimize(input: path, output: output, mode: :lossy)
 
       refute_includes result.fetch(:tools), "pngquant"
-      assert_includes result.fetch(:tools), "oxipng"
+      assert_lossless_png_optimizer_ran(result)
       assert_file_written output
     end
 
@@ -119,6 +119,10 @@ module SafeImage
     end
 
     private
+
+    def assert_lossless_png_optimizer_ran(result)
+      assert result.fetch(:tools).any? { |tool| %w[oxipng optipng].include?(tool) }
+    end
 
     # Hand-built 64x64 4-bit grayscale PNG (16 shades) — a shape pngquant's
     # palette output cannot shrink, so --skip-if-larger fires (exit 98).
