@@ -69,14 +69,12 @@ require_relative "safe_image/jpegli_backend"
 require_relative "safe_image/vips_backend"
 require_relative "safe_image/processor"
 require_relative "safe_image/operation_backends"
-require_relative "safe_image/operations"
 require_relative "safe_image/metadata_operations"
 require_relative "safe_image/transform_operations"
 require_relative "safe_image/api/metadata"
 require_relative "safe_image/api/transform"
 
 module SafeImage
-  private_constant :Operations
   private_constant :API
 
   module_function

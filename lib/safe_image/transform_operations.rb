@@ -52,7 +52,7 @@ module SafeImage
       max_pixels: nil,
       chroma_subsampling: :auto
     )
-      Operations.resize(
+      backend.resize(
         input: input,
         output: output,
         width: width,
@@ -60,13 +60,12 @@ module SafeImage
         quality: quality,
         optimize: optimize,
         max_pixels: max_pixels,
-        chroma_subsampling: chroma_subsampling,
-        config: config
+        chroma_subsampling: chroma_subsampling
       )
     end
 
     def crop(input:, output:, width:, height:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)
-      Operations.crop(
+      backend.crop(
         input: input,
         output: output,
         width: width,
@@ -74,8 +73,7 @@ module SafeImage
         quality: quality,
         optimize: optimize,
         max_pixels: max_pixels,
-        chroma_subsampling: chroma_subsampling,
-        config: config
+        chroma_subsampling: chroma_subsampling
       )
     end
 
@@ -88,55 +86,52 @@ module SafeImage
       quality: QualityDefaults::JPEG,
       chroma_subsampling: :auto
     )
-      Operations.downsize(
+      backend.downsize(
         input: input,
         output: output,
         dimensions: dimensions,
         optimize: optimize,
         max_pixels: max_pixels,
         quality: quality,
-        chroma_subsampling: chroma_subsampling,
-        config: config
+        chroma_subsampling: chroma_subsampling
       )
     end
 
     def convert(input:, output:, format:, quality: nil, optimize: true, max_pixels: nil, chroma_subsampling: :auto)
-      Operations.convert(
+      backend.convert(
         input: input,
         output: output,
         format: format,
         quality: quality,
         optimize: optimize,
         max_pixels: max_pixels,
-        chroma_subsampling: chroma_subsampling,
-        config: config
+        chroma_subsampling: chroma_subsampling
       )
     end
 
     def fix_orientation(input:, output:, max_pixels: nil, quality: nil)
-      Operations.fix_orientation(input: input, output: output, max_pixels: max_pixels, quality: quality, config: config)
+      backend.fix_orientation(input: input, output: output, max_pixels: max_pixels, quality: quality)
     end
 
     def convert_favicon_to_png(input:, output:, optimize: true, max_pixels: nil)
-      Operations.convert_favicon_to_png(
-        input: input,
-        output: output,
-        optimize: optimize,
-        max_pixels: max_pixels,
-        config: config
-      )
+      backend.convert_favicon_to_png(input: input, output: output, optimize: optimize, max_pixels: max_pixels)
     end
 
     def letter_avatar(output:, size:, background_rgb:, letter:, pointsize: 280, font: "DejaVu-Sans")
-      Operations.letter_avatar(
+      backend.letter_avatar(
         output: output,
         size: size,
         background_rgb: background_rgb,
         letter: letter,
         pointsize: pointsize,
-        font: font,
-        config: config
+        font: font
       )
+    end
+
+    private
+
+    def backend
+      OperationBackends.for(config)
     end
   end
 

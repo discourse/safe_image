@@ -127,13 +127,13 @@ module SafeImage
     end
 
     def frame_count(path, max_pixels: nil)
-      Operations.frame_count(path, max_pixels: max_pixels, config: config)
+      backend.frame_count(path, max_pixels: max_pixels)
     end
 
     def animated?(path, max_pixels: nil)
       return false if File.extname(PathSafety.local_path(path)).downcase == ".svg"
 
-      Operations.animated?(path, max_pixels: max_pixels, config: config)
+      backend.frame_count(path, max_pixels: max_pixels).to_i > 1
     end
 
     def self.fastimage_type(format)
@@ -159,6 +159,10 @@ module SafeImage
 
     def fastimage_type(format)
       self.class.fastimage_type(format)
+    end
+
+    def backend
+      OperationBackends.for(config)
     end
   end
 

@@ -5,9 +5,9 @@ require_relative "operation_backends/vips"
 require_relative "operation_backends/image_magick"
 
 module SafeImage
-  # Factory for operation orchestration strategies. The public Operations facade
-  # selects one strategy per call from the supplied config; the strategy owns the
-  # backend-specific pipeline details.
+  # Factory for operation orchestration strategies. Transform and metadata
+  # operation objects select one strategy per call from the supplied config; the
+  # strategy owns the backend-specific pipeline details.
   module OperationBackends
     module_function
 

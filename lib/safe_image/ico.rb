@@ -45,7 +45,7 @@ module SafeImage
     end
 
     # Extracts the largest icon and writes it as PNG. Returns an info hash in
-    # shape Operations.result_from_info expects.
+    # the shape OperationBackends::Base#result_from_info expects.
     def convert_to_png(input, output, max_pixels: nil)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       data, entries = parse(input)
