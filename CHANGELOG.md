@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installs.
 - Use real temporary-directory paths for remote-download tempfiles and tests so
   macOS' `/var` symlink does not trip Safe Image's symlink-component checks.
+- Use the bundled DejaVu font for ImageMagick letter-avatar rendering so the
+  default font does not depend on host fontconfig availability.
 - Escape custom `PKG_CONFIG` paths in the generated helper Makefile so install
   works when the path contains shell- or Makefile-significant characters.
 

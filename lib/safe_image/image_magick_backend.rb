@@ -28,6 +28,7 @@ module SafeImage
     ].freeze
 
     ALLOWED_FONTS = %w[NimbusSans-Regular DejaVu-Sans Liberation-Sans Arial Helvetica Adwaita-Sans].freeze
+    BUNDLED_DEJAVU = File.expand_path("fonts/DejaVuSans.ttf", __dir__)
 
     def probe(path, timeout: Runner::DEFAULT_TIMEOUT, max_pixels: nil)
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
@@ -261,6 +262,7 @@ module SafeImage
       if ALLOWED_FONTS.none? { |candidate| candidate == font_name }
         raise ArgumentError, "unsupported font: #{font_name.inspect}"
       end
+      font_arg = imagemagick_font(font_name)
 
       argv = [
         command,
@@ -273,7 +275,7 @@ module SafeImage
         "-fill",
         "#FFFFFFCC",
         "-font",
-        font_name,
+        font_arg,
         "-gravity",
         "Center",
         "-annotate",
@@ -283,7 +285,17 @@ module SafeImage
         "8",
         output_arg
       ]
-      run_image_command(argv, output, "generated", "png", timeout)
+      run_image_command(argv, output, "generated", "png", timeout, read: font_read_paths(font_arg))
+    end
+
+    def imagemagick_font(font_name)
+      return BUNDLED_DEJAVU if font_name == "DejaVu-Sans" && File.file?(BUNDLED_DEJAVU)
+
+      font_name
+    end
+
+    def font_read_paths(font_arg)
+      font_arg.include?(File::SEPARATOR) ? [font_arg] : []
     end
 
     def fix_orientation(input:, output:, timeout: Runner::DEFAULT_TIMEOUT)
