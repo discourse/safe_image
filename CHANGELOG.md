@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1 - 2026-06-23]
+
+### Added
+
+- Added macOS CI coverage for the full test suite against Homebrew-provided
+  dependencies, including libvips, ImageMagick, jpegoptim, jpeg-turbo,
+  pngquant, and oxipng.
+
+### Fixed
+
+- Made the bundled `safe_image_vips_helper` build optional at gem install time.
+  Installing Safe Image no longer fails on systems without libvips development
+  files or when the helper cannot be compiled; instead, install completes without
+  the helper and `SafeImage.configure!(backend: :vips)` continues to fail closed
+  with `VipsUnavailableError`.
+- Clean up stale or partially-built `safe_image_vips_helper` binaries when the
+  optional helper build is skipped, avoiding accidental use of an old helper.
+- Escape custom `PKG_CONFIG` paths in the generated helper Makefile so install
+  works when the path contains shell- or Makefile-significant characters.
+
 ## [0.5.0 - 2026-06-22]
 
 ### Changed
