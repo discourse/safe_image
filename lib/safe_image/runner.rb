@@ -37,7 +37,11 @@ module SafeImage
     # Give well-behaved tools a short flush window after TERM before KILL keeps
     # the timeout hard without leaking process groups.
     TERMINATE_GRACE_SECONDS = 0.2
-    TRUSTED_PATH = "/usr/bin:/bin:/usr/local/bin".freeze
+    # Homebrew on Apple Silicon installs some trusted tools outside /usr/local/bin;
+    # jpeg-turbo is keg-only, so jpegtran lives under its opt prefix.
+    TRUSTED_PATH = %w[/usr/bin /bin /usr/local/bin /opt/homebrew/bin /opt/homebrew/opt/jpeg-turbo/bin].join(
+      File::PATH_SEPARATOR
+    ).freeze
     ALLOWED_ENV_KEYS = %w[LANG LC_ALL LC_CTYPE TZ].freeze
     IMAGEMAGICK_POLICY_PATH = File.expand_path("imagemagick_policy", __dir__)
     IMAGEMAGICK_POLICY_FILE = File.join(IMAGEMAGICK_POLICY_PATH, "policy.xml").freeze

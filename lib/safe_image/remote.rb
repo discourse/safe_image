@@ -149,7 +149,7 @@ module SafeImage
       uri = parse_uri(url)
       started_at = monotonic_time
 
-      Tempfile.create(%w[safe-image-remote .bin], binmode: true) do |file|
+      Tempfile.create(%w[safe-image-remote .bin], SafeImage.real_tmpdir, binmode: true) do |file|
         response =
           request(
             uri,
@@ -313,7 +313,7 @@ module SafeImage
       uri = parse_uri(url)
       started_at = monotonic_time
 
-      Tempfile.create(%w[safe-image-remote .bin], binmode: true) do |file|
+      Tempfile.create(%w[safe-image-remote .bin], SafeImage.real_tmpdir, binmode: true) do |file|
         original_path = file.path
         path = original_path
         ext = nil

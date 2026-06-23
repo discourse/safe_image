@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `VipsUnavailableError`.
 - Clean up stale or partially-built `safe_image_vips_helper` binaries when the
   optional helper build is skipped, avoiding accidental use of an old helper.
+- Look for trusted external tools in Homebrew's Apple Silicon paths so the
+  ImageMagick and JPEG optimizer backends work on macOS CI and typical Homebrew
+  installs.
+- Use real temporary-directory paths for remote-download tempfiles and tests so
+  macOS' `/var` symlink does not trip Safe Image's symlink-component checks.
 - Escape custom `PKG_CONFIG` paths in the generated helper Makefile so install
   works when the path contains shell- or Makefile-significant characters.
 

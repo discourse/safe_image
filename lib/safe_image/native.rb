@@ -121,7 +121,7 @@ module SafeImage
         raise LimitError, "rgba buffer dimensions exceed 4096x4096" if width > 4096 || height > 4096
         raise ArgumentError, "rgba buffer must be width*height*4 bytes" if bytes.bytesize != width * height * 4
 
-        Tempfile.create(%w[safe-image-rgba .rgba], binmode: true) do |raw|
+        Tempfile.create(%w[safe-image-rgba .rgba], SafeImage.real_tmpdir, binmode: true) do |raw|
           raw.write(bytes)
           raw.close
           NativeHelper.png_from_rgba(raw.path, width, height, String(output))

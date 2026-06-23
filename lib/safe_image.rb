@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "tmpdir"
 require_relative "safe_image/version"
 
 module SafeImage
@@ -47,6 +48,10 @@ module SafeImage
   # it in with a single assignment, so readers never observe a half-applied
   # config.
   Config = Data.define(:backend, :landlock, :max_pixels)
+
+  def self.real_tmpdir
+    @real_tmpdir ||= File.realpath(Dir.tmpdir)
+  end
 end
 
 require_relative "safe_image/native"

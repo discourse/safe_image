@@ -128,7 +128,7 @@ module SafeImage
     private
 
     def vips_ico_dominant_color(path, max_pixels:)
-      Tempfile.create(%w[safe-image-ico .png]) do |tmp|
+      Tempfile.create(%w[safe-image-ico .png], SafeImage.real_tmpdir) do |tmp|
         tmp.close
         Ico.convert_to_png(path, tmp.path, max_pixels: max_pixels)
         VipsBackend.dominant_color(tmp.path, max_pixels: max_pixels)
