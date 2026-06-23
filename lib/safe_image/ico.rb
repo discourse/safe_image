@@ -59,7 +59,7 @@ module SafeImage
           # reaches a decoder.
           validate_pixels!(*entry_dimensions(data, entry), max_pixels)
           payload = data.byteslice(entry.offset, entry.size)
-          Tempfile.create(%w[safe-image-ico .png]) do |tmp|
+          Tempfile.create(%w[safe-image-ico .png], SafeImage.real_tmpdir) do |tmp|
             tmp.binmode
             tmp.write(payload)
             tmp.close

@@ -63,6 +63,30 @@ jobs:
       - name: Tests
         run: bundle exec rake test
 
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          brew install pkg-config vips imagemagick jpegoptim jpeg-turbo pngquant oxipng
+          # cjpegli is optional; its tests skip when it is missing.
+          brew install jpeg-xl || true
+          echo "$(brew --prefix jpeg-turbo)/bin" >> "$GITHUB_PATH"
+          export PATH="$(brew --prefix jpeg-turbo)/bin:$PATH"
+          command -v magick identify jpegoptim jpegtran oxipng pngquant
+
+      - name: Setup ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Tests
+        run: bundle exec rake test
+
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:

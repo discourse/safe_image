@@ -53,7 +53,7 @@ module SafeImage
     end
 
     def tmpdir
-      @tmpdir ||= Dir.mktmpdir("safe_image-test-")
+      @tmpdir ||= Dir.mktmpdir("safe_image-test-", SafeImage.real_tmpdir)
     end
 
     def tmp_path(name)
