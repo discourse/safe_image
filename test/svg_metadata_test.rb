@@ -29,7 +29,95 @@ module SafeImage
 
     def test_derives_dimensions_from_viewbox
       svg = write_tmp("viewbox.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 33.2 44.1"></svg>')
-      assert_equal [34, 45], SafeImage.size(svg)
+      assert_equal [33, 44], SafeImage.size(svg)
+    end
+
+    def test_rounds_fractional_dimensions_half_up
+      svg = write_tmp("fractional.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="120.4" height="80.5"></svg>')
+      assert_equal [120, 81], SafeImage.size(svg)
+    end
+
+    def test_accepts_absolute_length_units
+      {
+        %(width="1in" height="2in") => [96, 192],
+        %(width="1cm" height="2cm") => [38, 76],
+        %(width="10mm" height="20mm") => [38, 76],
+        %(width="1pc" height="2pc") => [16, 32]
+      }.each_with_index do |(attributes, expected), index|
+        svg = write_tmp("units-#{index}.svg", %(<svg xmlns="http://www.w3.org/2000/svg" #{attributes}></svg>))
+        assert_equal expected, SafeImage.size(svg), "wrong dimensions for #{attributes}"
+      end
+    end
+
+    # MSVG ignores a unit it does not recognise and uses the bare number; "pt"
+    # falls in that bucket despite being a real CSS unit. Callers persist these
+    # values, so the quirk is matched rather than corrected.
+    def test_uses_bare_number_for_unrecognised_units
+      svg = write_tmp("unrecognised.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="120pt" height="80q"></svg>')
+      assert_equal [120, 80], SafeImage.size(svg)
+    end
+
+    def test_accepts_scientific_notation
+      svg = write_tmp("exponent.svg", '<svg xmlns="http://www.w3.org/2000/svg" width="1.2e2" height=".8e2"></svg>')
+      assert_equal [120, 80], SafeImage.size(svg)
+    end
+
+    # A zero dimension is treated as absent (the viewBox answers instead), but a
+    # negative one is malformed and must not reach the fallback.
+    def test_zero_dimensions_fall_back_to_viewbox
+      svg =
+        write_tmp(
+          "zero.svg",
+          '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" viewBox="0 0 120 90"></svg>'
+        )
+      assert_equal [120, 90], SafeImage.size(svg)
+    end
+
+    def test_rejects_negative_dimensions_despite_viewbox
+      svg =
+        write_tmp(
+          "negative.svg",
+          '<svg xmlns="http://www.w3.org/2000/svg" width="-5" height="-5" viewBox="0 0 120 90"></svg>'
+        )
+      assert_raises(InvalidImageError) { SafeImage.size(svg) }
+    end
+
+    def test_accepts_doctype_without_internal_subset
+      svg = write_tmp("doctype-external.svg", <<~SVG)
+        <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>
+      SVG
+      assert_equal [10, 10], SafeImage.size(svg)
+    end
+
+    # The internal-subset scan runs on raw bytes before any parse, so a system
+    # literal containing ">" or "[" must not be mistaken for the end of the
+    # declaration, a bare decoy must not shield a later payload, and a truncated
+    # declaration must fail closed.
+    def test_rejects_internal_subset_hidden_behind_quoted_literals
+      [
+        %(<!DOCTYPE svg SYSTEM "x>" [ <!ENTITY boom "PWNED"> ]>),
+        %(<!DOCTYPE svg SYSTEM 'x>' [ <!ENTITY boom "PWNED"> ]>),
+        %(<!DOCTYPE svg SYSTEM "it's >" [ <!ENTITY boom "PWNED"> ]>),
+        %(<!DOCTYPE svg><!DOCTYPE svg [ <!ENTITY boom "PWNED"> ]>),
+        %(<!doctype svg [ <!ENTITY boom "PWNED"> ]>),
+        %(<!DOCTYPE svg\n  SYSTEM "x.dtd"\n  [ <!ENTITY boom "PWNED"> ]\n>),
+        %(<!DOCTYPE svg SYSTEM "never-closed)
+      ].each_with_index do |doctype, index|
+        svg = write_tmp("subset-#{index}.svg", <<~SVG)
+          #{doctype}
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>
+        SVG
+        assert_raises(InvalidImageError, "accepted a hostile DOCTYPE: #{doctype}") { SafeImage.size(svg) }
+      end
+    end
+
+    def test_accepts_system_literal_containing_bracket_and_gt
+      svg = write_tmp("literal.svg", <<~SVG)
+        <!DOCTYPE svg SYSTEM "harmless>quote[bracket">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>
+      SVG
+      assert_equal [10, 10], SafeImage.size(svg)
     end
 
     def test_ignores_namespaced_root_dimensions

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **SVG dimensions now match `identify -ping -format "%w %h" MSVG:`.** The probe
+  previously understood only bare numbers and `px`, so a document sized in
+  physical units — `width="1.2in"`, the shape Illustrator and Inkscape emit —
+  raised `InvalidImageError` where ImageMagick reported real dimensions. It now
+  converts `in`/`cm`/`mm`/`pc` at 96dpi, accepts the full SVG number grammar
+  (signs and exponents), uses an unrecognised unit's bare number the way MSVG
+  does, treats a zero dimension as absent so the `viewBox` answers, and rejects a
+  negative one outright instead of falling back.
+  `test/svg_imagemagick_parity_test.rb` asserts the agreement so the two cannot
+  drift.
+- **A `DOCTYPE` without an internal subset is now accepted.** The rule was a
+  substring match that refused any `<!DOCTYPE`, so the routine
+  `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "...">` header cost a document
+  its dimensions entirely. Entities can only be declared in the internal subset,
+  and that is the whole XXE and entity-expansion surface, so `[ ... ]` is still
+  rejected — by a byte scan that skips quoted literals, so a `>` or `[` inside a
+  system literal cannot disguise the brackets, checks every occurrence so a bare
+  decoy cannot shield a later payload, and fails closed on an unterminated
+  declaration. External DTDs remain unfetched and external entities unresolved.
+- **Fractional SVG dimensions now round half-up instead of up.** Matches the
+  raster size MSVG reports; a `viewBox="0 0 33.2 44.1"` document is `33x44`, not
+  `34x45`. Caps are still applied to the unrounded values.
+
 ## [0.5.1 - 2026-06-23]
 
 ### Added

@@ -27,6 +27,10 @@ module SafeImage
       "&",
       "&xxe;",
       "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM 'file:///etc/passwd'> ]>",
+      # Accepted when well formed, so the fuzzer exercises the byte scan's
+      # accept branch and the literal-skipping around it, not just its rejects.
+      %(<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">),
+      %(<!DOCTYPE svg SYSTEM "harmless>quote[bracket">),
       "<?xml-stylesheet href='http://evil.example/x.css'?>",
       "xmlns='#{SVG_XMLNS}'",
       "width='10'",

@@ -289,12 +289,39 @@ SafeImage.dimensions("upload.png") # => [800, 600]
 SafeImage.size("icon.svg")         # => [120, 80]
 ```
 
-SVG metadata is handled by a dedicated parser, not ImageMagick or libvips. It is
-limited to local `.svg` files, caps input size/tree depth/element/attribute
-counts, rejects `DOCTYPE` and non-XML processing instructions, requires an `<svg>`
-root, and derives dimensions from numeric `width`/`height` or `viewBox`. This
-bounded Nokogiri/libxml2 parse happens in the Ruby process; `landlock: true`
-contains child image helpers/tools, not SVG metadata parsing itself.
+SVG metadata is handled by a dedicated parser, not ImageMagick or libvips —
+neither backend is offered an SVG at all, because the bundled `policy.xml` denies
+the `SVG`/`MSVG` coders and every delegate, and the libvips helper has no SVG
+loader. Reading `width`/`height` needs no renderer, and rendering an untrusted
+document to discover its size is the risk this gem exists to avoid.
+
+The parser is limited to local `.svg` files, caps input size/tree depth/element/
+attribute counts, rejects a `DOCTYPE` internal subset and non-XML processing
+instructions, requires an `<svg>` root, and derives dimensions from
+`width`/`height` or `viewBox`. This bounded Nokogiri/libxml2 parse happens in the
+Ruby process; `landlock: true` contains child image helpers/tools, not SVG
+metadata parsing itself.
+
+Dimensions match `identify -ping -format "%w %h" MSVG:file.svg` — the call this
+replaces — including its unit conversions, so migrating cannot silently change a
+stored dimension. `test/svg_imagemagick_parity_test.rb` asserts the agreement.
+
+| `width`/`height` | pixels | |
+| --- | --- | --- |
+| `120`, `120px`, `1.2e2` | 120 | full SVG number grammar |
+| `1in` | 96 | 96dpi |
+| `1cm` / `1mm` | 37.8 / 3.78 | |
+| `1pc` | 16 | |
+| `120pt`, `120q`, `120foo` | 120 | unrecognised units are used unscaled, matching MSVG (the CSS spec says `pt` is 4/3px; the quirk is reproduced deliberately so migrated values do not shift) |
+| `100%`, `10em`, `10ex` | — | needs a rendering context; falls back to `viewBox` |
+| `0` | — | treated as absent; falls back to `viewBox` |
+| `-5` | — | rejected outright, never falls back |
+
+Fractional values round half-up. A `DOCTYPE` is accepted only without an internal
+subset: `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "...">` is inert markup
+this parser never dereferences, while anything carrying `[ ... ]` — the only place
+an entity can be declared, and so the whole XXE and entity-expansion surface — is
+rejected.
 
 #### `SafeImage.orientation(path, max_pixels: nil)`
 

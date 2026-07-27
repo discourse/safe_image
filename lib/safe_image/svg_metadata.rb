@@ -13,8 +13,25 @@ module SafeImage
     MAX_SVG_DIMENSION = 100_000
     MAX_SVG_PIXELS = 100_000_000
 
-    LENGTH_PATTERN = /\A\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(?:px)?\s*\z/i.freeze
+    # The SVG number grammar (sign, integer/decimal, optional exponent) followed
+    # by an optional unit. Wider than a bare digits-and-px match because the
+    # `identify -format "%w %h" MSVG:` call this replaces accepts the full
+    # grammar, and a document it measures must not become dimensionless here.
+    LENGTH_PATTERN = /\A\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z%]*)\s*\z/.freeze
     VIEWBOX_SPLIT = /[\s,]+/.freeze
+
+    # ImageMagick's MSVG conversion table at 96dpi. Units absent from this map
+    # are used unscaled, which is what MSVG does — including for "pt", where the
+    # CSS spec says 4/3px. The quirk is reproduced deliberately: these values are
+    # persisted by callers migrating off `identify`, and a "correct" pt would
+    # silently resize every stored dimension that came from a pt document.
+    UNIT_SCALE = { "" => 1.0, "px" => 1.0, "in" => 96.0, "cm" => 96.0 / 2.54, "mm" => 96.0 / 25.4, "pc" => 16.0 }.freeze
+
+    # Units that need a rendering context (viewport size, font metrics) which a
+    # non-rendering probe does not have. MSVG errors out on them; we treat them
+    # as absent so the viewBox fallback runs, which reaches MSVG's answer for
+    # every case measured and fails the same way when there is no viewBox.
+    UNRESOLVABLE_UNITS = %w[% em ex].freeze
 
     # Byte-order marks for the multi-byte encodings whose ASCII characters our
     # byte-level scans below cannot see through. XML mandates a BOM for UTF-16
@@ -106,8 +123,52 @@ module SafeImage
       # charsets but not for UTF-16/32 or multi-byte/transforming encodings, so
       # reject those first.
       reject_unsafe_encoding!(xml)
-      raise InvalidImageError, "doctype is not allowed in SVG" if xml.match?(/<!DOCTYPE/i)
+      reject_doctype_internal_subset!(xml)
       raise InvalidImageError, "XML processing instructions are not allowed in SVG" if xml.match?(/<\?(?!xml\s)/i)
+    end
+
+    # A DOCTYPE may only declare entities inside its internal subset — the
+    # bracketed section — and entities are the entire XXE / entity-expansion
+    # surface. A declaration without one names an external DTD that this parser
+    # never dereferences (verified: external entities resolve to nothing here
+    # because libxml2 loads no DTD and resolves no external ID on this path), so
+    # it is inert markup the parser skips. Rejecting those too would discard the
+    # dimensions of every SVG carrying the routine
+    # `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ...>` header that authoring
+    # tools emit.
+    #
+    # The scan is byte-level, like the guards around it, and runs before any
+    # parse. It must therefore skip quoted literals: a SystemLiteral may legally
+    # contain both ">" and "[", so a naive search for the first ">" would let
+    # `<!DOCTYPE svg SYSTEM "x>" [ <!ENTITY boom "..."> ]>` through. Every
+    # occurrence is checked, not just the first, so a bare decoy cannot shield a
+    # later payload, and an unterminated declaration fails closed.
+    def reject_doctype_internal_subset!(xml)
+      scan = xml.b
+      offset = 0
+      while (start = scan.index(/<!DOCTYPE/i, offset))
+        cursor = start + "<!DOCTYPE".length
+        quote = nil
+        terminated = false
+
+        while cursor < scan.bytesize
+          byte = scan.getbyte(cursor).chr
+          if quote
+            quote = nil if byte == quote
+          elsif byte == '"' || byte == "'"
+            quote = byte
+          elsif byte == "["
+            raise InvalidImageError, "DOCTYPE internal subset is not allowed in SVG"
+          elsif byte == ">"
+            terminated = true
+            break
+          end
+          cursor += 1
+        end
+        raise InvalidImageError, "unterminated DOCTYPE in SVG" unless terminated
+
+        offset = cursor + 1
+      end
     end
 
     def reject_unsafe_encoding!(xml)
@@ -136,14 +197,21 @@ module SafeImage
     end
 
     def parse_length(value)
-      value = value.to_s
-      match = LENGTH_PATTERN.match(value)
+      match = LENGTH_PATTERN.match(value.to_s)
       return nil unless match
 
       number = Float(match[1])
-      return nil unless number.finite? && number.positive?
+      return nil unless number.finite?
 
-      number
+      # A negative dimension is malformed rather than absent: MSVG rejects the
+      # document outright instead of falling through to the viewBox, so it must
+      # not be silently rescued by the fallback the way a missing value is.
+      raise InvalidImageError, "SVG dimensions are missing or invalid" if number.negative?
+
+      unit = match[2].downcase
+      return nil if number.zero? || UNRESOLVABLE_UNITS.include?(unit)
+
+      number * (UNIT_SCALE[unit] || 1.0)
     rescue ArgumentError
       nil
     end
@@ -178,7 +246,10 @@ module SafeImage
         end
       raise LimitError, "SVG has #{pixels.to_i} pixels, exceeds #{limit}" if pixels > limit
 
-      [width.ceil, height.ceil]
+      # Round half-up, matching the raster dimensions MSVG reports for a
+      # fractional document. The caps above are applied to the unrounded values,
+      # so rounding can never lift a document over a limit.
+      [width.round, height.round]
     end
 
     # Streams the document with a SAX parser, enforcing the structural caps as
