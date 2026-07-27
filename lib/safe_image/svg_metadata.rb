@@ -13,8 +13,13 @@ module SafeImage
     MAX_SVG_DIMENSION = 100_000
     MAX_SVG_PIXELS = 100_000_000
 
-    LENGTH_PATTERN = /\A\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(?:px)?\s*\z/i.freeze
+    LENGTH_PATTERN = /\A\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z%]*)\s*\z/.freeze
     VIEWBOX_SPLIT = /[\s,]+/.freeze
+
+    # Mirrors MSVG, which leaves "pt" unscaled where CSS says 4/3px. Correcting
+    # it would resize every stored dimension taken from a pt document.
+    MSVG_UNIT_SCALE = { "in" => 96.0, "cm" => 96.0 / 2.54, "mm" => 96.0 / 25.4, "pc" => 16.0 }.freeze
+    UNITS_NEEDING_A_RENDERING_CONTEXT = %w[% em ex].freeze
 
     # Byte-order marks for the multi-byte encodings whose ASCII characters our
     # byte-level scans below cannot see through. XML mandates a BOM for UTF-16
@@ -106,8 +111,37 @@ module SafeImage
       # charsets but not for UTF-16/32 or multi-byte/transforming encodings, so
       # reject those first.
       reject_unsafe_encoding!(xml)
-      raise InvalidImageError, "doctype is not allowed in SVG" if xml.match?(/<!DOCTYPE/i)
+      reject_doctype_internal_subset!(xml)
       raise InvalidImageError, "XML processing instructions are not allowed in SVG" if xml.match?(/<\?(?!xml\s)/i)
+    end
+
+    def reject_doctype_internal_subset!(xml)
+      bytes = xml.b
+      offset = 0
+      while (declaration = bytes.index(/<!DOCTYPE/i, offset))
+        offset = doctype_declaration_end!(bytes: bytes, from: declaration + "<!DOCTYPE".length) + 1
+      end
+    end
+
+    def doctype_declaration_end!(bytes:, from:)
+      cursor = from
+      inside_literal_quoted_by = nil
+
+      while cursor < bytes.bytesize
+        byte = bytes.getbyte(cursor).chr
+        if inside_literal_quoted_by
+          inside_literal_quoted_by = nil if byte == inside_literal_quoted_by
+        elsif byte == '"' || byte == "'"
+          inside_literal_quoted_by = byte
+        elsif byte == "["
+          raise InvalidImageError, "DOCTYPE internal subset is not allowed in SVG"
+        elsif byte == ">"
+          return cursor
+        end
+        cursor += 1
+      end
+
+      raise InvalidImageError, "unterminated DOCTYPE in SVG"
     end
 
     def reject_unsafe_encoding!(xml)
@@ -136,14 +170,18 @@ module SafeImage
     end
 
     def parse_length(value)
-      value = value.to_s
-      match = LENGTH_PATTERN.match(value)
+      match = LENGTH_PATTERN.match(value.to_s)
       return nil unless match
 
       number = Float(match[1])
-      return nil unless number.finite? && number.positive?
+      return nil unless number.finite?
 
-      number
+      raise InvalidImageError, "SVG dimensions are missing or invalid" if number.negative?
+
+      unit = match[2].downcase
+      return nil if number.zero? || UNITS_NEEDING_A_RENDERING_CONTEXT.include?(unit)
+
+      number * (MSVG_UNIT_SCALE[unit] || 1.0)
     rescue ArgumentError
       nil
     end
@@ -178,7 +216,7 @@ module SafeImage
         end
       raise LimitError, "SVG has #{pixels.to_i} pixels, exceeds #{limit}" if pixels > limit
 
-      [width.ceil, height.ceil]
+      [width.round, height.round]
     end
 
     # Streams the document with a SAX parser, enforcing the structural caps as

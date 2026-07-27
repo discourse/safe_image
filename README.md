@@ -289,12 +289,43 @@ SafeImage.dimensions("upload.png") # => [800, 600]
 SafeImage.size("icon.svg")         # => [120, 80]
 ```
 
-SVG metadata is handled by a dedicated parser, not ImageMagick or libvips. It is
-limited to local `.svg` files, caps input size/tree depth/element/attribute
-counts, rejects `DOCTYPE` and non-XML processing instructions, requires an `<svg>`
-root, and derives dimensions from numeric `width`/`height` or `viewBox`. This
-bounded Nokogiri/libxml2 parse happens in the Ruby process; `landlock: true`
-contains child image helpers/tools, not SVG metadata parsing itself.
+SVG metadata is handled by a dedicated parser, not ImageMagick or libvips.
+Neither backend is offered an SVG at all. The bundled `policy.xml` denies the
+`SVG`/`MSVG` coders and every delegate. libvips does ship an rsvg-backed
+`svgload`, but vips marks that loader untrusted and the helper calls
+`vips_block_untrusted_set(TRUE)`, so it is blocked outright; the helper also
+picks loaders from an explicit `--input-format` allowlist that has no SVG entry,
+and never derives one from the path. Reading `width`/`height` needs no renderer,
+and rendering an untrusted document to discover its size is the risk this gem
+exists to avoid.
+
+The parser is limited to local `.svg` files, caps input size/tree depth/element/
+attribute counts, rejects a `DOCTYPE` internal subset and non-XML processing
+instructions, requires an `<svg>` root, and derives dimensions from
+`width`/`height` or `viewBox`. This bounded Nokogiri/libxml2 parse happens in the
+Ruby process; `landlock: true` contains child image helpers/tools, not SVG
+metadata parsing itself.
+
+Dimensions match the `identify -ping -format "%w %h" MSVG:file.svg` call this
+replaces, including its unit conversions, so migrating cannot silently change a
+stored dimension. `test/svg_imagemagick_parity_test.rb` asserts the agreement.
+
+| `width`/`height` | pixels | |
+| --- | --- | --- |
+| `120`, `120px`, `1.2e2` | 120 | full SVG number grammar |
+| `1in` | 96 | 96dpi |
+| `1cm` / `1mm` | 37.8 / 3.78 | |
+| `1pc` | 16 | |
+| `120pt`, `120q`, `120foo` | 120 | unrecognised units are used unscaled, matching MSVG (the CSS spec says `pt` is 4/3px; the quirk is reproduced deliberately so migrated values do not shift) |
+| `100%`, `10em`, `10ex` | none | needs a rendering context; falls back to `viewBox` |
+| `0` | none | treated as absent; falls back to `viewBox` |
+| `-5` | none | rejected outright, never falls back |
+
+Fractional values round half-up. A `DOCTYPE` is accepted only without an internal
+subset: `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "...">` is inert markup
+this parser never dereferences, while anything carrying `[ ... ]` is rejected,
+that being the only place an entity can be declared and so the whole XXE and
+entity-expansion surface.
 
 #### `SafeImage.orientation(path, max_pixels: nil)`
 
