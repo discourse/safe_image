@@ -13,7 +13,7 @@ module SafeImage
     end
 
     def suitable_direct_input?(input)
-      Formats.cjpegli_direct_input?(normalized_ext(input))
+      Formats.cjpegli_direct_input?(ContentFormat.for_input(input))
     end
 
     def convert(input:, output:, quality: DEFAULT_QUALITY, chroma_subsampling: :auto, timeout: Runner::DEFAULT_TIMEOUT)
@@ -23,7 +23,7 @@ module SafeImage
       output = PathSafety.ensure_safe_output_path!(output).to_s
       ensure_jpeg_output!(output)
 
-      input_format = normalized_ext(input)
+      input_format = ContentFormat.for_input(input)
       if DIRECT_INPUTS.none? { |candidate| candidate == input_format }
         raise UnsupportedFormatError, "cjpegli direct input format is unsupported: #{input_format.inspect}"
       end
@@ -69,7 +69,7 @@ module SafeImage
       ensure_jpeg_output!(output_path)
       output_path.dirname.mkpath
 
-      input_format ||= normalized_ext(input)
+      input_format ||= ContentFormat.for_input(input)
       quality = validate_quality!(quality)
       chroma_subsampling = validate_chroma_subsampling!(chroma_subsampling, input_format: input_format)
 

@@ -32,7 +32,7 @@ module SafeImage
 
     def probe(path, timeout: Runner::DEFAULT_TIMEOUT, max_pixels: nil)
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
-      input, ext, input_arg = imagemagick_input(path, frame: nil)
+      input, input_format, input_arg = imagemagick_input(path, frame: nil)
       stdout, =
         Runner.run!(
           ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%m %w %h %n\n", input_arg],
@@ -45,7 +45,7 @@ module SafeImage
       if max_pixels && width * height > Integer(max_pixels)
         raise LimitError, "image has #{width * height} pixels, exceeds #{max_pixels}"
       end
-      { input_format: Formats.normalize(ext), width: width, height: height, frames: frames.to_i, duration_ms: 0.0 }
+      { input_format: input_format, width: width, height: height, frames: frames.to_i, duration_ms: 0.0 }
     end
 
     def thumbnail(input:, output:, width:, height:, format:, quality:, timeout: Runner::DEFAULT_TIMEOUT)
@@ -64,7 +64,7 @@ module SafeImage
     def resize_like(input:, output:, width:, height:, format:, quality:, crop: false, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
 
-      input, ext, input_arg = imagemagick_input(input, frame: 0)
+      input, input_format, input_arg = imagemagick_input(input, frame: 0)
       output, output_arg = imagemagick_output(format, output)
 
       quality = validate_quality!(quality)
@@ -110,13 +110,13 @@ module SafeImage
       argv.concat(["-quality", quality.to_s]) if quality
       argv << output_arg
 
-      run_image_command(argv, output, ext, format, timeout, read: [input])
+      run_image_command(argv, output, input_format, format, timeout, read: [input])
     end
 
     def downsize(input:, output:, dimensions:, format:, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
 
-      input, ext, input_arg = imagemagick_input(input, frame: 0)
+      input, input_format, input_arg = imagemagick_input(input, frame: 0)
       output, output_arg = imagemagick_output(format, output)
       dimensions = validate_dimensions!(dimensions)
       argv = [
@@ -135,12 +135,12 @@ module SafeImage
       ]
       argv.concat(["-profile", DEFAULT_PROFILE]) if File.file?(DEFAULT_PROFILE)
       argv << output_arg
-      run_image_command(argv, output, ext, format, timeout, read: [input])
+      run_image_command(argv, output, input_format, format, timeout, read: [input])
     end
 
     def convert(input:, output:, format:, quality: nil, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
-      input, ext, input_arg = imagemagick_input(input, frame: 0)
+      input, input_format, input_arg = imagemagick_input(input, frame: 0)
       normalized_format = Formats.normalize(format)
       output, output_arg = imagemagick_output(normalized_format, output)
       quality = validate_quality!(quality)
@@ -149,13 +149,15 @@ module SafeImage
       argv.concat(%w[-background white -flatten]) if normalized_format == "jpg"
       argv.concat(["-quality", quality.to_s]) if quality
       argv << output_arg
-      run_image_command(argv, output, ext, normalized_format, timeout, read: [input])
+      run_image_command(argv, output, input_format, normalized_format, timeout, read: [input])
     end
 
     def convert_ico_to_png(input:, output:, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
-      input, ext, input_arg = imagemagick_input(input, frame: -1)
-      raise UnsupportedFormatError, "convert_favicon_to_png requires ico input, got #{ext.inspect}" unless ext == "ico"
+      input, input_format, input_arg = imagemagick_input(input, frame: -1)
+      unless input_format == "ico"
+        raise UnsupportedFormatError, "convert_favicon_to_png requires ico input, got #{input_format.inspect}"
+      end
 
       output, output_arg = imagemagick_output("png", output)
       argv = [command, *IMAGEMAGICK_LIMIT_ARGS, input_arg, "-auto-orient", "-background", "transparent", output_arg]
@@ -164,7 +166,7 @@ module SafeImage
 
     def frame_count(path, timeout: Runner::DEFAULT_TIMEOUT, max_pixels: nil)
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
-      input, _ext, input_arg = imagemagick_input(path, frame: nil)
+      input, _input_format, input_arg = imagemagick_input(path, frame: nil)
       stdout, =
         Runner.run!(
           ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%w %h %n\n", input_arg],
@@ -180,7 +182,7 @@ module SafeImage
 
     def orientation(path, timeout: Runner::DEFAULT_TIMEOUT)
       raise UnsupportedFormatError, "ImageMagick identify not available" unless Runner.available?("identify")
-      input, _ext, input_arg = imagemagick_input(path, frame: 0)
+      input, _input_format, input_arg = imagemagick_input(path, frame: 0)
       stdout, =
         Runner.run!(
           ["identify", *IMAGEMAGICK_LIMIT_ARGS, "-ping", "-format", "%[EXIF:Orientation]", input_arg],
@@ -206,7 +208,7 @@ module SafeImage
     # hex string.
     def dominant_color(path, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
-      input, _ext, input_arg = imagemagick_input(path, frame: 0)
+      input, _input_format, input_arg = imagemagick_input(path, frame: 0)
       stdout, =
         Runner.run!(
           [
@@ -300,18 +302,18 @@ module SafeImage
 
     def fix_orientation(input:, output:, timeout: Runner::DEFAULT_TIMEOUT)
       command = convert_command
-      input, ext, input_arg = imagemagick_input(input, frame: 0)
-      output, output_arg = imagemagick_output(ext, output)
+      input, input_format, input_arg = imagemagick_input(input, frame: 0)
+      output, output_arg = imagemagick_output(input_format, output)
       argv = [command, *IMAGEMAGICK_LIMIT_ARGS, input_arg, "-auto-orient", output_arg]
-      run_image_command(argv, output, ext, ext, timeout, read: [input])
+      run_image_command(argv, output, input_format, input_format, timeout, read: [input])
     end
 
     def imagemagick_input(input, frame:)
       input = PathSafety.ensure_imagemagick_input_file!(input)
-      ext = Formats.extension(input)
-      decoder = Formats.imagemagick_decoder(ext)
+      format = ContentFormat.for_input(input)
+      decoder = Formats.imagemagick_decoder(format)
       frame_suffix = frame.nil? ? "" : "[#{Integer(frame)}]"
-      [input, ext, "#{decoder}:#{input}#{frame_suffix}"]
+      [input, format, "#{decoder}:#{input}#{frame_suffix}"]
     end
 
     def imagemagick_output(format, output)

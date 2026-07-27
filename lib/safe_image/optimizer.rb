@@ -40,9 +40,9 @@ module SafeImage
       assume_upright: false
     )
       input, output = PathSafety.ensure_distinct_file_paths!(input, output)
-      ext = normalized_extension(input)
+      format = ContentFormat.for_input(input)
 
-      StagedOutput.replace(output, suffix: ".safe-image.#{ext}") do |tmp_path|
+      StagedOutput.replace(output, suffix: ".safe-image.#{format}") do |tmp_path|
         FileUtils.cp(input, tmp_path)
         optimize_working_file!(
           tmp_path,
@@ -66,11 +66,11 @@ module SafeImage
       assume_upright: false
     )
       path = PathSafety.ensure_regular_file!(path)
-      ext = normalized_extension(path)
+      format = ContentFormat.for_input(path)
       before = File.size(path)
       state = { tools: [], rotated_from: nil, trimmed: false }
 
-      case ext
+      case format
       when "jpg"
         skipped =
           optimize_jpeg!(
@@ -96,10 +96,10 @@ module SafeImage
           before: before
         )
       else
-        raise UnsupportedFormatError, "unsupported optimize format: #{ext.inspect}"
+        raise UnsupportedFormatError, "unsupported optimize format: #{format.inspect}"
       end
 
-      build_result(ext, before, File.size(path), state)
+      build_result(format, before, File.size(path), state)
     end
 
     def optimize_jpeg!(path, state, strip_metadata:, quality:, timeout:, strict:, assume_upright:, before:)
@@ -218,10 +218,6 @@ module SafeImage
       }
     end
 
-    def normalized_extension(path)
-      Formats.extension(path)
-    end
-
     def jpeg_orientation(path)
       case SafeImage.config.backend
       when :vips
@@ -273,7 +269,6 @@ module SafeImage
                          :optipng!,
                          :build_result,
                          :skipped_result,
-                         :normalized_extension,
                          :jpeg_orientation,
                          :upright_working_file!
   end

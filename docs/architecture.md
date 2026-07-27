@@ -15,6 +15,8 @@ Safe Image is deliberately structured as a narrow boundary around untrusted imag
 - `lib/safe_image/image_magick_backend.rb` — ImageMagick argv construction under the bundled policy.
 - `lib/safe_image/sandbox.rb` — optional Landlock capture for child commands/helpers, with explicit read/write grants.
 - `lib/safe_image/formats.rb` — Ruby-side format normalization and allowlists.
+- `lib/safe_image/content_format.rb` — pure-Ruby content sniffing over a bounded file prefix; the single place an
+  input's format is decided.
 - `lib/safe_image/staged_output.rb` — same-directory temporary output and staged replacement helpers.
 
 ## Security invariants
@@ -33,12 +35,20 @@ Changes should preserve these rules:
 6. External commands are always argv arrays. Never construct shell strings.
 7. ImageMagick paths are prefixed with explicit coders (`jpeg:`, `png:`, etc.) and run only with the bundled restrictive
    `policy.xml`.
-8. Pixel limits are enforced before full decode: libvips probes headers first and ImageMagick uses both probe checks and
+8. The decoder for an input is chosen from the file's own bytes, never from its name. `ContentFormat` reads a bounded
+   prefix, matches known signatures and yields one allowlisted format, which is passed explicitly to the libvips helper
+   (`--input-format`) or used to build the ImageMagick coder prefix. Neither the helper nor ImageMagick re-derives a
+   loader from the path. Bytes matching no signature fall back to the extension's claim so they still fail closed inside
+   the declared decoder; sniffing selects a decoder, it never widens the accepted set. SVG is identified by its root
+   element, matched at the very start of the document behind an optional XML declaration, comments and a DOCTYPE, so a
+   file that merely contains `<svg>` somewhere is not routed into the XML probe. That probe's own limits (invariant 10)
+   are what make it safe to reach, not the file's name.
+9. Pixel limits are enforced before full decode: libvips probes headers first and ImageMagick uses both probe checks and
    its `128MP` area limit.
-9. SVG metadata probing remains bounded and non-rendering: byte/depth/element/attribute caps, unsafe encoding rejection,
-   and root-dimension pixel caps all happen before parser results are trusted. This Nokogiri/libxml2 parse runs in the
-   Ruby process; Landlock containment is for child helpers and tools, not this parser.
-10. Remote fetching remains SSRF-hardened: DNS pinning, special-use IP blocking, redirect limits, and no direct decode
+10. SVG metadata probing remains bounded and non-rendering: byte/depth/element/attribute caps, unsafe encoding rejection,
+    and root-dimension pixel caps all happen before parser results are trusted. This Nokogiri/libxml2 parse runs in the
+    Ruby process; Landlock containment is for child helpers and tools, not this parser.
+11. Remote fetching remains SSRF-hardened: DNS pinning, special-use IP blocking, redirect limits, and no direct decode
     from network sockets.
 
 ## Debugging model
@@ -59,5 +69,5 @@ Changes should preserve these rules:
 4. Add or reuse backend-specific argv/native helpers.
 5. If the operation shells out, pass explicit Landlock `read:`/`write:` grants to the child command/helper.
 6. Route temporary outputs through `StagedOutput`.
-7. Normalize/validate formats with `Formats`.
+7. Identify input formats with `ContentFormat`; normalize/validate output formats with `Formats`.
 8. Add contract and backend tests that exercise real fixtures rather than mocks.

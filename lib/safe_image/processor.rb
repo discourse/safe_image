@@ -84,7 +84,7 @@ module SafeImage
             width: width,
             height: height,
             quality: quality,
-            source_format: input.extname.delete_prefix(".").downcase
+            source_format: ContentFormat.for_input(input)
           )
         return info
       end
@@ -173,8 +173,8 @@ module SafeImage
 
     def safe_existing_file!(path)
       path = PathSafety.ensure_regular_file!(path)
-      ext = Formats.extension(path)
-      raise UnsupportedFormatError, "unsupported input format: #{ext.inspect}" unless Formats.native_input?(ext)
+      format = ContentFormat.for_input(path)
+      raise UnsupportedFormatError, "unsupported input format: #{format.inspect}" unless Formats.native_input?(format)
       path
     end
 

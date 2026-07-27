@@ -95,7 +95,7 @@ module SafeImage
 
     def safe_svg_path(path)
       path = PathSafety.ensure_regular_file!(path)
-      raise UnsupportedFormatError, "not an SVG file: #{path}" unless File.extname(path.to_s).downcase == ".svg"
+      raise UnsupportedFormatError, "not an SVG file: #{path}" unless ContentFormat.for_input(path) == "svg"
       path.to_s
     end
 

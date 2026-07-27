@@ -27,9 +27,17 @@ module SafeImage
     end
 
     def test_metadata_apis_keep_simple_path_contracts
-      %i[probe type size dimensions orientation dominant_color frame_count animated?].each do |method_name|
-        assert_includes SafeImage.method(method_name).parameters, %i[req path]
-      end
+      %i[
+        probe
+        detect_format
+        type
+        size
+        dimensions
+        orientation
+        dominant_color
+        frame_count
+        animated?
+      ].each { |method_name| assert_includes SafeImage.method(method_name).parameters, %i[req path] }
     end
 
     def test_removed_legacy_mutating_convenience_apis_stay_removed

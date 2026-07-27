@@ -201,11 +201,6 @@ static void write_value_string(const char *response, const char *value) {
   fclose(f);
 }
 
-static const char *extname(const char *path) {
-  const char *dot = strrchr(path, '.');
-  return dot ? dot + 1 : "";
-}
-
 static const char *normalized_format(const char *format) {
   if (!format) {
     return NULL;
@@ -263,13 +258,15 @@ static int load_image_from_source(VipsSource *source, const char *format, VipsIm
   return -1;
 }
 
-static int load_image(const char *path, gboolean autorotate, VipsImage **out,
-                      const char **format_out) {
-  const char *format = normalized_format(extname(path));
+static const char *requested_input_format(options_t *opts, const char *response) {
+  const char *format = normalized_format(opt_required(opts, "input-format"));
   if (!format) {
-    vips_error("safe_image", "%s", "unsupported input format");
-    return -1;
+    write_error(response, "ArgumentError", "unsupported input format");
   }
+  return format;
+}
+
+static int load_image(const char *path, const char *format, gboolean autorotate, VipsImage **out) {
   int rc = -1;
   if (strcmp(format, "jpg") == 0) {
     rc = vips_jpegload(path, out, "access", VIPS_ACCESS_SEQUENTIAL, "fail-on", VIPS_FAIL_ON_ERROR,
@@ -318,7 +315,6 @@ static int load_image(const char *path, gboolean autorotate, VipsImage **out,
       return rc;
     }
   }
-  *format_out = format;
   return 0;
 }
 
@@ -400,9 +396,12 @@ static int cmd_probe(options_t *opts, double started) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
+  const char *format = requested_input_format(opts, response);
+  if (!format) {
+    return 1;
+  }
   VipsImage *image = NULL;
-  const char *format = NULL;
-  if (load_image(input, FALSE, &image, &format) != 0) {
+  if (load_image(input, format, FALSE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -422,9 +421,12 @@ static int cmd_orientation(options_t *opts) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
+  const char *format = requested_input_format(opts, response);
+  if (!format) {
+    return 1;
+  }
   VipsImage *image = NULL;
-  const char *format = NULL;
-  if (load_image(input, FALSE, &image, &format) != 0) {
+  if (load_image(input, format, FALSE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -447,9 +449,12 @@ static int cmd_pages(options_t *opts) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
+  const char *format = requested_input_format(opts, response);
+  if (!format) {
+    return 1;
+  }
   VipsImage *image = NULL;
-  const char *format = NULL;
-  if (load_image(input, FALSE, &image, &format) != 0) {
+  if (load_image(input, format, FALSE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -472,7 +477,7 @@ static int cmd_thumbnail(options_t *opts, double started) {
   int height = opt_int(opts, "height", 0);
   int quality = opt_int(opts, "quality", DEFAULT_JPEG_QUALITY);
   const char *out_format = normalized_format(opt_required(opts, "format"));
-  const char *in_format = normalized_format(extname(input));
+  const char *in_format = normalized_format(opt_required(opts, "input-format"));
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
   if (width <= 0 || height <= 0 || quality < 1 || quality > 100 || !out_format ||
       strcmp(out_format, "heic") == 0 || !in_format) {
@@ -559,9 +564,12 @@ static int cmd_resize(options_t *opts, double started) {
     write_error(response, "ArgumentError", "invalid resize arguments");
     return 1;
   }
+  const char *in_format = requested_input_format(opts, response);
+  if (!in_format) {
+    return 1;
+  }
   VipsImage *image = NULL, *rot = NULL, *resized = NULL;
-  const char *in_format = NULL;
-  if (load_image(input, TRUE, &image, &in_format) != 0) {
+  if (load_image(input, in_format, TRUE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -600,9 +608,12 @@ static int cmd_crop_north(options_t *opts, double started) {
     write_error(response, "ArgumentError", "invalid crop arguments");
     return 1;
   }
+  const char *in_format = requested_input_format(opts, response);
+  if (!in_format) {
+    return 1;
+  }
   VipsImage *image = NULL, *rot = NULL, *resized = NULL, *cropped = NULL;
-  const char *in_format = NULL;
-  if (load_image(input, TRUE, &image, &in_format) != 0) {
+  if (load_image(input, in_format, TRUE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -660,9 +671,12 @@ static int cmd_convert(options_t *opts, double started) {
     write_error(response, "ArgumentError", "invalid convert arguments");
     return 1;
   }
+  const char *in_format = requested_input_format(opts, response);
+  if (!in_format) {
+    return 1;
+  }
   VipsImage *image = NULL, *rot = NULL, *final = NULL;
-  const char *in_format = NULL;
-  if (load_image(input, TRUE, &image, &in_format) != 0) {
+  if (load_image(input, in_format, TRUE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }
@@ -711,9 +725,12 @@ static int cmd_dominant_color(options_t *opts) {
   const char *response = opt_required(opts, "response");
   const char *input = opt_required(opts, "input");
   long long max_pixels = opt_ll(opts, "max-pixels", DEFAULT_MAX_PIXELS);
+  const char *format = requested_input_format(opts, response);
+  if (!format) {
+    return 1;
+  }
   VipsImage *image = NULL, *srgb = NULL, *work = NULL, *stats = NULL;
-  const char *format = NULL;
-  if (load_image(input, FALSE, &image, &format) != 0) {
+  if (load_image(input, format, FALSE, &image) != 0) {
     fail_response(response, "InvalidImageError");
     return 1;
   }

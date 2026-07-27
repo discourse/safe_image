@@ -132,7 +132,7 @@ module SafeImage
         input, output = input_output!(input, output)
         max_pixels = resolved_max_pixels(max_pixels)
         input = PathSafety.ensure_regular_file!(input).to_s
-        format = Formats.extension(input)
+        format = ContentFormat.for_input(input)
         # Validates the format against the native loader allowlist and enforces
         # the pixel cap before any pixel decode.
         orient = VipsBackend.orientation(input, max_pixels: max_pixels)

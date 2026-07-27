@@ -13,10 +13,15 @@ module SafeImage
 
       def probe(path, max_pixels = nil)
         path = String(path)
-        input_format!(path)
-        info = NativeHelper.probe(path, checked_max_pixels(max_pixels))
+        input_format = input_format!(path)
+        info =
+          NativeHelper.probe(
+            input: path,
+            input_format: loader_format(input_format),
+            max_pixels: checked_max_pixels(max_pixels)
+          )
         {
-          format: info.fetch(:input_format),
+          format: input_format,
           width: info.fetch(:width),
           height: info.fetch(:height),
           duration_ms: info.fetch(:duration_ms)
@@ -31,16 +36,17 @@ module SafeImage
         validate_quality!(quality)
 
         input = String(input)
-        input_format!(input)
+        input_format = input_format!(input)
         NativeHelper.thumbnail(
-          input,
-          String(output),
-          width,
-          height,
-          output_format!(format),
-          quality,
-          checked_max_pixels(max_pixels)
-        )
+          input: input,
+          output: String(output),
+          input_format: loader_format(input_format),
+          width: width,
+          height: height,
+          format: output_format!(format),
+          quality: quality,
+          max_pixels: checked_max_pixels(max_pixels)
+        ).merge(input_format: input_format)
       end
 
       def resize(input, output, scale, format, quality, max_pixels)
@@ -52,15 +58,16 @@ module SafeImage
         validate_quality!(quality)
 
         input = String(input)
-        input_format!(input)
+        input_format = input_format!(input)
         NativeHelper.resize(
-          input,
-          String(output),
-          scale,
-          output_format!(format),
-          quality,
-          checked_max_pixels(max_pixels)
-        )
+          input: input,
+          output: String(output),
+          input_format: loader_format(input_format),
+          scale: scale,
+          format: output_format!(format),
+          quality: quality,
+          max_pixels: checked_max_pixels(max_pixels)
+        ).merge(input_format: input_format)
       end
 
       def crop_north(input, output, width, height, format, quality, max_pixels)
@@ -71,43 +78,61 @@ module SafeImage
         validate_quality!(quality)
 
         input = String(input)
-        input_format!(input)
+        input_format = input_format!(input)
         NativeHelper.crop_north(
-          input,
-          String(output),
-          width,
-          height,
-          output_format!(format),
-          quality,
-          checked_max_pixels(max_pixels)
-        )
+          input: input,
+          output: String(output),
+          input_format: loader_format(input_format),
+          width: width,
+          height: height,
+          format: output_format!(format),
+          quality: quality,
+          max_pixels: checked_max_pixels(max_pixels)
+        ).merge(input_format: input_format)
       end
 
       def convert(input, output, format, quality, max_pixels)
         quality = Integer(quality)
         validate_quality!(quality)
         input = String(input)
-        input_format!(input)
-        NativeHelper.convert(input, String(output), output_format!(format), quality, checked_max_pixels(max_pixels))
+        input_format = input_format!(input)
+        NativeHelper.convert(
+          input: input,
+          output: String(output),
+          input_format: loader_format(input_format),
+          format: output_format!(format),
+          quality: quality,
+          max_pixels: checked_max_pixels(max_pixels)
+        ).merge(input_format: input_format)
       end
 
       def dominant_color(path, max_pixels)
         path = String(path)
-        input_format!(path)
-        hex = NativeHelper.dominant_color(path, checked_max_pixels(max_pixels))
+        hex =
+          NativeHelper.dominant_color(
+            input: path,
+            input_format: loader_format(input_format!(path)),
+            max_pixels: checked_max_pixels(max_pixels)
+          )
         hex.scan(/../).map { |component| component.to_i(16) }
       end
 
       def pages(path, max_pixels)
         path = String(path)
-        input_format!(path)
-        NativeHelper.pages(path, checked_max_pixels(max_pixels))
+        NativeHelper.pages(
+          input: path,
+          input_format: loader_format(input_format!(path)),
+          max_pixels: checked_max_pixels(max_pixels)
+        )
       end
 
       def orientation(path, max_pixels)
         path = String(path)
-        input_format!(path)
-        NativeHelper.orientation(path, checked_max_pixels(max_pixels))
+        NativeHelper.orientation(
+          input: path,
+          input_format: loader_format(input_format!(path)),
+          max_pixels: checked_max_pixels(max_pixels)
+        )
       end
 
       # Encodes a raw RGBA buffer (top-down rows) as PNG. Used by the pure-Ruby
@@ -124,7 +149,7 @@ module SafeImage
         Tempfile.create(%w[safe-image-rgba .rgba], SafeImage.real_tmpdir, binmode: true) do |raw|
           raw.write(bytes)
           raw.close
-          NativeHelper.png_from_rgba(raw.path, width, height, String(output))
+          NativeHelper.png_from_rgba(raw_input: raw.path, width: width, height: height, output: String(output))
         end
         true
       end
@@ -140,14 +165,14 @@ module SafeImage
         end
 
         NativeHelper.letter_avatar(
-          String(output),
-          size,
-          channels[0],
-          channels[1],
-          channels[2],
-          String(markup),
-          String(font),
-          String(fontfile)
+          output: String(output),
+          size: size,
+          red: channels[0],
+          green: channels[1],
+          blue: channels[2],
+          markup: String(markup),
+          font: String(font),
+          fontfile: String(fontfile)
         )
         true
       end
@@ -155,10 +180,14 @@ module SafeImage
       private
 
       def input_format!(path)
-        format = Formats.extension(path)
-        raise UnsupportedFormatError, "unsupported input format" unless Formats.native_input?(format)
+        format = ContentFormat.for_input(path)
+        raise UnsupportedFormatError, "unsupported input format: #{format.inspect}" unless Formats.native_input?(format)
 
         format
+      end
+
+      def loader_format(input_format)
+        Formats.native_canonical(input_format)
       end
 
       def output_format!(format)

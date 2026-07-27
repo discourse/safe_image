@@ -9,6 +9,11 @@ module SafeImage
         metadata_operations.probe(path, max_pixels: max_pixels)
       end
 
+      def detect_format(path)
+        config
+        ContentFormat.detect(path)
+      end
+
       def type(path, max_pixels: nil)
         metadata_operations.type(path, max_pixels: max_pixels)
       end

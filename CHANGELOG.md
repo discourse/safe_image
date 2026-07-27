@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `SafeImage.detect_format(path)` returns the format a file's own bytes
+  identify (or `nil` when they identify nothing decodable), so callers can
+  reconcile an upload's name with its content: the `photo.jpg` that holds PNG
+  bytes can be renamed to `photo.png` instead of being rejected.
+
+### Changed
+
+- **Input decoders are now selected from content, not from the file name.**
+  Every operation identifies the input format by reading a bounded prefix of
+  the file and matching known signatures, then hands that format explicitly to
+  the libvips helper (new `--input-format` argument) or to ImageMagick's coder
+  prefix. A PNG named `.jpg` is decoded as PNG and reported as `"png"` instead
+  of failing in the JPEG loader. Bytes matching no signature still fall back to
+  the decoder the extension claims and are rejected there, so nothing this gem
+  could not previously decode becomes acceptable.
+- **SVG is identified by content as well.** A document is recognised by its root
+  element at the start of the file, behind an optional XML declaration, comments
+  and a DOCTYPE, so an SVG named `.png` is probed as SVG instead of being handed
+  to the PNG loader. The match is anchored, so markup that merely contains
+  `<svg>` is not treated as one. Previously the SVG probe was reachable only
+  through an explicit `.svg` name.
+- **HEIF containers report `heif` rather than `heic`.** A `mif1`/`msf1` brand
+  with no AVIF brand alongside it is a HEIF container, not a HEIC one, and
+  `detect_format` and `input_format` now name it as such instead of folding it
+  into its sibling. Compatible brands are still scanned, so a `mif1`-major file
+  that names `avif` is reported as AVIF. Decoding is unaffected: the HEIC loader
+  handles the whole family.
+
 ## [0.5.1 - 2026-06-23]
 
 ### Added

@@ -21,6 +21,13 @@ module SafeImage
       assert_equal ruby_outputs.sort, c_outputs.sort
     end
 
+    def test_helper_takes_the_input_format_from_the_caller
+      source = File.read(C_HELPER)
+
+      assert_match(/opt_required\(opts, "input-format"\)/, source)
+      refute_match(/strrchr\(path, '\.'\)/, source, "the helper must not derive a loader from the file name")
+    end
+
     def test_ruby_and_c_quality_defaults_match
       source = File.read(C_HELPER)
 

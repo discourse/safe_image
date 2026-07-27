@@ -243,9 +243,50 @@ like `FastImage.type`, `FastImage.size`, and `FastImage#orientation` without
 adding a Ruby dependency. None of these fetch remote URLs — see
 [Remote URLs](#remote-urls) for that.
 
+#### `SafeImage.detect_format(path)`
+
+Returns the format the file's own bytes identify, or `nil` when they match
+nothing Safe Image can decode:
+
+```ruby
+SafeImage.detect_format("photo.jpg")  # => "png", when the file holds PNG bytes
+SafeImage.detect_format("notes.txt")  # => nil
+```
+
+The file name is a label, not evidence. Every operation picks its decoder from
+the content signature, so an upload named `photo.jpg` that holds PNG bytes is
+decoded as PNG and reported as `"png"`. The caller is free to rename it to
+`photo.png` rather than lose an image the gem reads perfectly well:
+
+```ruby
+format = SafeImage.detect_format(upload)      # "png"
+File.rename(upload, "photo.png") if format && format != File.extname(upload).delete_prefix(".")
+```
+
+This reads a bounded prefix of the file and decodes nothing, so it is cheap
+enough to run on every upload. Bytes matching no signature fall back to the
+decoder the extension claims, and are rejected there. Content sniffing never
+widens what Safe Image accepts; it only stops a wrong name from choosing the
+wrong decoder.
+
+SVG counts as content too. It is recognised by its root element at the start of
+the document, behind an optional XML declaration, comments and a DOCTYPE, which
+is how authoring tools write it:
+
+```ruby
+SafeImage.detect_format("logo.png")  # => "svg", when the file holds an SVG document
+SafeImage.type("logo.png")           # => :svg
+```
+
+The match is anchored, so a file that merely mentions `<svg>` somewhere, an HTML
+page for instance, is not treated as one. What keeps the SVG probe safe to reach
+is its own bounds (byte, element, depth and attribute caps, no rendering, no
+DOCTYPE internal subset), not the name of the file that reaches it.
+
 #### `SafeImage.probe(path, max_pixels: nil)`
 
-Reads image metadata through the configured backend.
+Reads image metadata through the configured backend. `input_format` reports
+what the bytes are, which is not necessarily what the file is called.
 
 Supported inputs on the `:vips` backend:
 
@@ -743,7 +784,9 @@ What it does:
 - uses explicit argv arrays for external commands, never shell strings
 - starts external commands with an allowlisted environment, private temp/home/cache
   directories, bounded stdout/stderr, and process-group timeout cleanup
-- uses explicit libvips loaders selected from allowlisted extensions
+- uses explicit libvips loaders and ImageMagick coder prefixes chosen from the
+  file's own content signature, checked against an allowlist, so the decoder
+  always matches the bytes and a file's name never selects one
 - enables libvips' untrusted-operation block inside the helper (deliberately
   re-enabling only the libjxl loader/saver, which libvips tags untrusted,
   because JPEG XL is part of the supported input surface)

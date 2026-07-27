@@ -9,8 +9,8 @@ module SafeImage
       path = PathSafety.local_path(path)
       max_pixels = resolved_max_pixels(max_pixels)
 
-      case File.extname(path).downcase
-      when ".svg"
+      case ContentFormat.for_input(path)
+      when "svg"
         info = SvgMetadata.probe(path, max_pixels: max_pixels)
         Result.metadata(
           input: File.expand_path(path),
@@ -20,7 +20,7 @@ module SafeImage
           backend: :svg_metadata,
           duration_ms: info.fetch(:duration_ms)
         )
-      when ".ico"
+      when "ico"
         # Pure-Ruby directory parse; reports the largest entry's dimensions.
         info = Ico.probe(path, max_pixels: max_pixels)
         Result.metadata(
@@ -77,8 +77,8 @@ module SafeImage
     end
 
     def orientation(path, max_pixels: nil)
-      case File.extname(PathSafety.local_path(path)).downcase
-      when ".svg", ".ico"
+      case ContentFormat.for_input(path)
+      when "svg", "ico"
         # No EXIF orientation in either format; upright by definition.
         1
       else
@@ -99,7 +99,7 @@ module SafeImage
       max_pixels = resolved_max_pixels(max_pixels)
       case config.backend
       when :vips
-        if File.extname(PathSafety.local_path(path)).downcase == ".ico"
+        if ContentFormat.for_input(path) == "ico"
           # The configured backend is vips; ICO bytes are decoded by the
           # pure-Ruby parser and the extracted PNG is averaged by the vips helper.
           vips_ico_dominant_color(path, max_pixels: max_pixels)
@@ -116,7 +116,7 @@ module SafeImage
     end
 
     def animated?(path, max_pixels: nil)
-      return false if File.extname(PathSafety.local_path(path)).downcase == ".svg"
+      return false if ContentFormat.for_input(path) == "svg"
 
       backend.frame_count(path, max_pixels: max_pixels).to_i > 1
     end

@@ -17,9 +17,7 @@ module SafeImage
         max_pixels = resolved_max_pixels(max_pixels)
         # ico directories are counted by the pure-Ruby parser on either backend;
         # everything else is a header-only count.
-        if File.extname(PathSafety.local_path(path)).downcase == ".ico"
-          return Ico.frame_count(path, max_pixels: max_pixels)
-        end
+        return Ico.frame_count(path, max_pixels: max_pixels) if ContentFormat.for_input(path) == "ico"
 
         backend_frame_count(path, max_pixels: max_pixels)
       end

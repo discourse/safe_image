@@ -127,9 +127,9 @@ module SafeImage
                       "rejecting a #{far_over_cap}-element bomb allocated #{allocated} objects; the SAX parse did not abort early at the cap"
     end
 
-    def test_rejects_svg_content_without_svg_extension
+    def test_probes_svg_content_under_any_name
       txt = write_tmp("not-svg.txt", '<svg width="1" height="1"></svg>')
-      assert_raises(UnsupportedFormatError) { SafeImage.size(txt) }
+      assert_equal [1, 1], SafeImage.size(txt)
     end
 
     # The DOCTYPE/PI guards are ASCII byte regexes. A UTF-16 document interleaves

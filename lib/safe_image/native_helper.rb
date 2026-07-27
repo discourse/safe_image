@@ -32,15 +32,16 @@ module SafeImage
       @verified = true
     end
 
-    def probe(path, max_pixels)
-      call!("probe", input: path, max_pixels: max_pixels)
+    def probe(input:, input_format:, max_pixels:)
+      call!("probe", input: input, input_format: input_format, max_pixels: max_pixels)
     end
 
-    def thumbnail(input, output, width, height, format, quality, max_pixels)
+    def thumbnail(input:, output:, input_format:, width:, height:, format:, quality:, max_pixels:)
       call!(
         "thumbnail",
         input: input,
         output: output,
+        input_format: input_format,
         width: width,
         height: height,
         format: format,
@@ -49,11 +50,12 @@ module SafeImage
       )
     end
 
-    def resize(input, output, scale, format, quality, max_pixels)
+    def resize(input:, output:, input_format:, scale:, format:, quality:, max_pixels:)
       call!(
         "resize",
         input: input,
         output: output,
+        input_format: input_format,
         scale: scale,
         format: format,
         quality: quality,
@@ -61,11 +63,12 @@ module SafeImage
       )
     end
 
-    def crop_north(input, output, width, height, format, quality, max_pixels)
+    def crop_north(input:, output:, input_format:, width:, height:, format:, quality:, max_pixels:)
       call!(
         "crop-north",
         input: input,
         output: output,
+        input_format: input_format,
         width: width,
         height: height,
         format: format,
@@ -74,15 +77,23 @@ module SafeImage
       )
     end
 
-    def convert(input, output, format, quality, max_pixels)
-      call!("convert", input: input, output: output, format: format, quality: quality, max_pixels: max_pixels)
+    def convert(input:, output:, input_format:, format:, quality:, max_pixels:)
+      call!(
+        "convert",
+        input: input,
+        output: output,
+        input_format: input_format,
+        format: format,
+        quality: quality,
+        max_pixels: max_pixels
+      )
     end
 
-    def png_from_rgba(raw_input, width, height, output)
+    def png_from_rgba(raw_input:, width:, height:, output:)
       call!("png-from-rgba", raw_input: raw_input, width: width, height: height, output: output)
     end
 
-    def letter_avatar(output, size, red, green, blue, markup, font, fontfile)
+    def letter_avatar(output:, size:, red:, green:, blue:, markup:, font:, fontfile:)
       call!(
         "letter-avatar",
         output: output,
@@ -96,16 +107,16 @@ module SafeImage
       )
     end
 
-    def dominant_color(path, max_pixels)
-      call!("dominant-color", input: path, max_pixels: max_pixels).fetch(:value)
+    def dominant_color(input:, input_format:, max_pixels:)
+      call!("dominant-color", input: input, input_format: input_format, max_pixels: max_pixels).fetch(:value)
     end
 
-    def pages(path, max_pixels)
-      call!("pages", input: path, max_pixels: max_pixels).fetch(:value)
+    def pages(input:, input_format:, max_pixels:)
+      call!("pages", input: input, input_format: input_format, max_pixels: max_pixels).fetch(:value)
     end
 
-    def orientation(path, max_pixels)
-      call!("orientation", input: path, max_pixels: max_pixels).fetch(:value)
+    def orientation(input:, input_format:, max_pixels:)
+      call!("orientation", input: input, input_format: input_format, max_pixels: max_pixels).fetch(:value)
     end
 
     def call!(command, sandbox: SafeImage.sandbox?, **options)
